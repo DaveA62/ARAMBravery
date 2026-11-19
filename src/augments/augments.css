@@ -144,6 +144,16 @@
   gap: clamp(5px, 0.9vw, 11px);
 }
 
+.augment-picker__slots[data-count="4"] {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+@media (max-width: 520px) {
+  .augment-picker__slots[data-count="4"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .augment-offer {
   position: relative;
   min-width: 0;
@@ -906,6 +916,11 @@
   .augment-picker[data-ready]:not([data-reduced-motion]) .augment-offer:nth-child(3) {
     --fan-angle: 12deg;
     animation-delay: 90ms;
+  }
+
+  .augment-picker[data-ready]:not([data-reduced-motion]) .augment-offer:nth-child(4) {
+    --fan-angle: 15deg;
+    animation-delay: 120ms;
   }
 }
 

@@ -6,7 +6,7 @@ export {
   championCompatibility, eligibleItems, generateItems, validateItems, canCombine, ITEM_SLOT_COUNT, type Mode,
 } from './itemLegality';
 export { generateSkills, validateSkills, type SkillStep } from './skills';
-export { recommendAugment, rankAugments, type AugmentDecision } from './augmentDecisions';
+export { recommendAugment, rankAugments, type AugmentDecision, type AugmentOfferCount } from './augmentDecisions';
 export { newSeed, seededRandom } from './random';
 export {
   challengeKey, challengeUrl, challengeFromUrl, loadLibrary, rememberChallenge, toggleFavorite, loadPreferences,

@@ -138,6 +138,23 @@ describe('augment decisions', () => {
     expect(recommendAugment(decisions, offered, 0).action).toBe('take');
     expect(recommendAugment(decisions, offered.slice(0, 2), 1).action).toBeNull();
   });
+
+  it('waits for all four unique Maestro offers and ranks the fourth', () => {
+    const decisions = generateChallenge({ seed, mode: 'little' }).augments;
+    const choice = decisions.find(({ instruction, priority }) =>
+      instruction === 'reroll' && priority <= decisions.length - 3)!;
+    const [second, third, fourth] = decisions.slice(choice.priority, choice.priority + 3);
+    const offered = [third, choice, second, fourth].map(({ augment }) => augment.id);
+
+    expect(recommendAugment(decisions, offered, 4, 4)).toEqual({
+      ranked: [choice, second, third, fourth], choice, action: 'reroll',
+    });
+    expect(recommendAugment(decisions, offered, 0, 4)).toMatchObject({ choice, action: 'take' });
+    expect(recommendAugment(decisions, offered.slice(0, 3), 4, 4).choice).toBeNull();
+    expect(recommendAugment(decisions, offered, 4).choice).toBeNull();
+    expect(recommendAugment(decisions, [...offered.slice(0, 3), offered[0]], 4, 4).action).toBeNull();
+    expect(recommendAugment(decisions, [...offered.slice(0, 3), 'unknown-augment'], 4, 4).action).toBeNull();
+  });
 });
 
 describe('seeds and component rerolls', () => {

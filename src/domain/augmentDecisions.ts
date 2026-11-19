@@ -1,6 +1,8 @@
 import { augments, type Augment } from '../data';
 import { byId, shuffled } from './random';
 
+export type AugmentOfferCount = 3 | 4;
+
 export interface AugmentDecision {
   augment: Augment;
   priority: number;
@@ -21,6 +23,7 @@ export function recommendAugment(
   decisions: readonly AugmentDecision[],
   offeredIds: readonly string[],
   rerollsRemaining: number,
+  offerCount: AugmentOfferCount = 3,
 ): {
   ranked: AugmentDecision[];
   choice: AugmentDecision | null;
@@ -29,7 +32,8 @@ export function recommendAugment(
   const ids = new Set(offeredIds);
   const ranked = decisions.filter(({ augment }) => ids.has(augment.id))
     .sort((first, second) => first.priority - second.priority);
-  const choice = offeredIds.length === 3 && ranked.length === 3 ? ranked[0] : null;
+  const completeOffer = offeredIds.length === offerCount && ids.size === offerCount && ranked.length === offerCount;
+  const choice = completeOffer ? ranked[0] : null;
   const action = choice ? (rerollsRemaining > 0 ? choice.instruction : 'take') : null;
   return { ranked, choice, action };
 }

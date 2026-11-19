@@ -19,7 +19,8 @@ The Vite preview command serves the production build with `npm run preview`. Git
 
 - Choose a random champion or select one from the mode's eligible roster. Pick **A Little Bullshit** to consider the champion’s meaningful scaling, or **Straight Bullshit** to roll from the full baseline shop.
 - Buy the items in the displayed order. Change any item or spell with its individual reroll. The other slots stay fixed. Tap a skill level to track it.
-- Enter the augment choices you see in League and set the rerolls you have left for that offer. The picker ranks your choices using your challenge’s decision sheet.
+- Choose **By name** to enter the augments you see and rank them using your challenge’s decision sheet. Choose **By position** for a seeded card pick at levels 3, 7, 11, and 15. Count the offered cards from left to right.
+- Set **Cards per offer** to four for Maestro. In position mode, use **Add bonus pick** for each additional round your Headliner offers, including Pentakill’s two bonus picks.
 - Share copies a versioned URL or a text summary. Individual rerolls are encoded in the URL. Favorites, recent rolls, and preferences stay in this browser. Second-monitor mode keeps the build and picker in a compact layout.
 - The machine uses synthesized sound. Its first sound follows a user interaction. Settings include two volume controls, mute, shorter animation, and no animation. System reduced-motion preferences also apply.
 

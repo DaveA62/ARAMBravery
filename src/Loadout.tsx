@@ -3,7 +3,7 @@ import { Coins, Crosshair, RotateCw, Zap } from 'lucide-react'
 import { champions, items, spells, type Champion } from './data'
 import { modeName, type Challenge } from './domain'
 import { preloadArcade, Reel, type ReelFace, type useArcade } from './arcade'
-import { AugmentPicker } from './augments/AugmentPicker'
+import { AugmentTools } from './augments/AugmentTools'
 import { MAYHEM_START_LEVEL, skillNote } from './domain/skills'
 import { Art } from './ui'
 
@@ -148,7 +148,7 @@ export function Loadout({ challenge, arcade, reducedMotion, compact, showHeading
         </div>
       </section>
       <div id="augment-picker" className="augment-anchor">
-        <AugmentPicker challenge={arcade.showAugments ? challenge : null} reducedMotion={reducedMotion} compact={compact}
+        <AugmentTools challenge={arcade.showAugments ? challenge : null} reducedMotion={reducedMotion} compact={compact}
           playSound={event => arcade.play(event === 'augmentReroll' ? 'warning' : event === 'augmentFlip' ? 'tap' : 'confirm')} />
       </div>
     </>

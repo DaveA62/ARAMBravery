@@ -4,7 +4,7 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
 import { augments, coverage } from '../data'
 import { recommendAugment } from '../domain'
-import type { Challenge } from '../domain'
+import type { AugmentOfferCount, Challenge } from '../domain'
 import { AugmentSheet } from './AugmentSheet'
 import { AugmentIcon, matchesAugment } from './presentation'
 import './augments.css'
@@ -14,37 +14,45 @@ type Props = {
   challenge: Challenge | null
   reducedMotion?: boolean
   compact?: boolean
+  offerCount?: AugmentOfferCount
   playSound?: (event: PickerSound) => void
 }
 
-const offers = [0, 1, 2] as const
-const rankingNames = ['First', 'Second', 'Third']
-const maximumRerolls = offers.length
+const rankingNames = ['First', 'Second', 'Third', 'Fourth']
 const catalogById = new Map(augments.map(augment => [augment.id, augment]))
 const searchCatalog = [...augments].sort((first, second) => first.name.localeCompare(second.name))
 
-export function AugmentPicker({ challenge, reducedMotion = false, compact = false, playSound }: Props) {
-  const [selected, setSelected] = useState<(string | null)[]>([null, null, null])
+export function AugmentPicker({ challenge, reducedMotion = false, compact = false, offerCount = 3, playSound }: Props) {
+  const [selected, setSelected] = useState<(string | null)[]>([])
   const [activeSlot, setActiveSlot] = useState<number | null>(null)
   const [query, setQuery] = useState('')
-  const [rerolls, setRerolls] = useState<number>(maximumRerolls)
+  const [rerollOverride, setRerollOverride] = useState<number | null>(null)
   const searchInput = useRef<HTMLInputElement>(null)
   const slotButtons = useRef<(HTMLButtonElement | null)[]>([])
   const resultsRef = useRef<HTMLDivElement>(null)
   const lastSound = useRef('')
   const pickerId = useId()
-  const chosenIds = selected.filter((id): id is string => id !== null)
-  const decision = recommendAugment(challenge?.augments ?? [], chosenIds, rerolls)
+  const visibleOffers = useMemo(() => Array.from({ length: offerCount }, (_, index) => selected[index] ?? null), [offerCount, selected])
+  const rerolls = Math.min(offerCount, rerollOverride ?? offerCount)
+  const chosenIds = visibleOffers.filter((id): id is string => id !== null)
+  const decision = recommendAugment(challenge?.augments ?? [], chosenIds, rerolls, offerCount)
   const { action, choice } = decision
-  const ranked = chosenIds.length === offers.length ? decision.ranked : []
-  const searchOpen = activeSlot !== null && challenge !== null
+  const ranked = choice ? decision.ranked : []
+  const searchOpen = activeSlot !== null && activeSlot < offerCount && challenge !== null
   const results = useMemo(() => {
     if (!searchOpen) return []
-    const excluded = new Set(selected.filter((_, index) => index !== activeSlot))
+    const excluded = new Set(visibleOffers.filter((_, index) => index !== activeSlot))
     return searchCatalog.filter(augment => !excluded.has(augment.id) && matchesAugment(augment, query))
-  }, [activeSlot, query, searchOpen, selected])
+  }, [activeSlot, query, searchOpen, visibleOffers])
 
   const soundKey = action ? JSON.stringify([challenge?.config.seed, action, chosenIds]) : ''
+  useEffect(() => {
+    if (activeSlot !== null && activeSlot >= offerCount) {
+      setActiveSlot(null)
+      setQuery('')
+    }
+  }, [activeSlot, offerCount])
+
   useEffect(() => {
     if (searchOpen) searchInput.current?.focus()
   }, [activeSlot, searchOpen])
@@ -67,7 +75,7 @@ export function AugmentPicker({ challenge, reducedMotion = false, compact = fals
 
   function selectOffer(id: string) {
     if (activeSlot === null) return
-    const updated = selected.map((current, index) => index === activeSlot ? id : current)
+    const updated = visibleOffers.map((current, index) => index === activeSlot ? id : current)
     const nextEmpty = updated.findIndex(current => current === null)
     setSelected(updated)
     setQuery('')
@@ -82,16 +90,20 @@ export function AugmentPicker({ challenge, reducedMotion = false, compact = fals
   }
 
   function resetOffers() {
-    setSelected([null, null, null])
+    setSelected([])
     setQuery('')
-    setRerolls(maximumRerolls)
+    setRerollOverride(null)
     setActiveSlot(null)
     slotButtons.current[0]?.focus()
     playSound?.('confirm')
   }
 
   function changeRerolls(amount: number) {
-    setRerolls(current => Math.min(maximumRerolls, Math.max(0, current + amount)))
+    setRerollOverride(previous => {
+      const remaining = Math.min(offerCount, previous ?? offerCount)
+      const updated = Math.min(offerCount, Math.max(0, remaining + amount))
+      return updated === offerCount ? null : updated
+    })
     playSound?.('confirm')
   }
 
@@ -114,10 +126,10 @@ export function AugmentPicker({ challenge, reducedMotion = false, compact = fals
           <div className="augment-picker__emblem" aria-hidden="true"><Diamond size={25} /></div>
           <div>
             <h2 id={`${pickerId}-title`}>Augment Picker</h2>
-            <p>{challenge ? 'Enter the three augments offered in your match.' : 'Roll a build to unlock your augment decisions.'}</p>
+            <p>{challenge ? `Enter the ${offerCount} augments offered in your match.` : 'Roll a build to unlock your augment decisions.'}</p>
           </div>
           {chosenIds.length > 0 && (
-            <button className="augment-reset" type="button" onClick={resetOffers} aria-label="Clear offers and restore three rerolls">
+            <button className="augment-reset" type="button" onClick={resetOffers} aria-label={`Clear offers and restore ${offerCount} rerolls`}>
               <RotateCw size={13} aria-hidden="true" /> <span>Clear offers</span>
             </button>
           )}
@@ -128,9 +140,8 @@ export function AugmentPicker({ challenge, reducedMotion = false, compact = fals
 
         <div className="augment-picker__workspace">
           <div className="augment-picker__offers">
-            <div className="augment-picker__slots">
-              {offers.map(index => {
-                const id = selected[index]
+            <div className="augment-picker__slots" data-count={offerCount}>
+              {visibleOffers.map((id, index) => {
                 const augment = id === null ? undefined : catalogById.get(id)
                 const rank = ranked.findIndex(entry => entry.augment.id === id)
                 const selectedRank = rank >= 0 ? ranked[rank] : null
@@ -144,6 +155,7 @@ export function AugmentPicker({ challenge, reducedMotion = false, compact = fals
                       aria-label={augment ? `Replace offer ${index + 1}, ${augment.name}` : `Select offer ${index + 1}`}
                       aria-expanded={searchOpen && activeSlot === index}
                       aria-controls={searchOpen ? `${pickerId}-search` : undefined}
+                      aria-describedby={selectedRank ? `${pickerId}-rank-${index}` : undefined}
                       disabled={!challenge}
                       onClick={() => activeSlot === index ? closeOffer() : openOffer(index)}
                     >
@@ -164,7 +176,7 @@ export function AugmentPicker({ challenge, reducedMotion = false, compact = fals
                         </>
                       )}
                       {selectedRank && (
-                        <motion.span key={`${rank}-${id}`} className="augment-offer__rank"
+                        <motion.span key={`${rank}-${id}`} id={`${pickerId}-rank-${index}`} className="augment-offer__rank"
                           initial={reducedMotion ? false : { opacity: 0, y: 4 }}
                           animate={{ opacity: 1, y: 0 }}
                           transition={{ duration: reducedMotion ? 0 : 0.2, delay: reducedMotion ? 0 : rank * 0.05 }}>
@@ -224,7 +236,7 @@ export function AugmentPicker({ challenge, reducedMotion = false, compact = fals
                 <button type="button" aria-label="Decrease rerolls remaining" disabled={rerolls === 0 || !challenge}
                   onClick={() => changeRerolls(-1)}><Minus size={14} aria-hidden="true" /></button>
                 <output aria-live="polite">{rerolls}</output>
-                <button type="button" aria-label="Increase rerolls remaining" disabled={rerolls === maximumRerolls || !challenge}
+                <button type="button" aria-label="Increase rerolls remaining" disabled={rerolls === offerCount || !challenge}
                   onClick={() => changeRerolls(1)}><Plus size={14} aria-hidden="true" /></button>
               </div>
             </div>
@@ -242,7 +254,7 @@ export function AugmentPicker({ challenge, reducedMotion = false, compact = fals
                 </span>
                 <div>
                   <p className="augment-recommendation__label">Recommended action</p>
-                  <h3>{action === 'take' ? 'Take it' : action === 'reroll' ? 'Reroll first' : <>{chosenIds.length}<span> / 3</span> entered</>}</h3>
+                  <h3>{action === 'take' ? 'Take it' : action === 'reroll' ? 'Reroll first' : <>{chosenIds.length}<span> / {offerCount}</span> entered</>}</h3>
                   {choice && (
                     <p className="augment-recommendation__detail">
                       {action === 'reroll'
