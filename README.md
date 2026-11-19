@@ -13,7 +13,7 @@ npm test
 npm run build
 ```
 
-The Vite preview command serves the production build with `npm run preview`. GitHub Pages deploys `dist/` through the included workflow when the repository's Pages source is set to **GitHub Actions**.
+The Vite preview command serves the production build with `npm run preview`. GitHub Pages deploys `dist/` to `/ARAMBravery/` through the included workflow on pushes to `main`.
 
 ## Play a challenge
 
@@ -22,6 +22,16 @@ The Vite preview command serves the production build with `npm run preview`. Git
 - Enter the augment choices you see in League and set the rerolls you have left for that offer. The picker ranks your choices using your challenge’s decision sheet.
 - Share copies a versioned URL or a text summary. Individual rerolls are encoded in the URL. Favorites, recent rolls, and preferences stay in this browser. Second-monitor mode keeps the build and picker in a compact layout.
 - The machine uses synthesized sound. Its first sound follows a user interaction. Settings include two volume controls, mute, shorter animation, and no animation. System reduced-motion preferences also apply.
+
+## Party Mayhem
+
+Open **Party Mayhem**, enter a nickname, and create a party. Share the six-character code or the invite link. Choose your champion and ready up. The host chooses the shared chaos mode and each player's item reroll allowance. A team roll assigns separate builds. **My Build** shows your results and rerolls. **The Whole Circus** shows everyone’s current builds. **Run It Back** returns the party to the lobby with the same settings and champion preferences.
+
+- The host’s browser holds the authoritative roster, game rules, readiness, round seeds, and reroll ledger. Guests send requests over a WebRTC data channel. The host validates each request against the admitted player and current round, then broadcasts a numbered snapshot. Connections receive fresh snapshots when they rejoin. The protocol checks app and patch compatibility, and clients recreate the seed-based results locally using the same version.
+- Offline players have a 45-second seat reservation from disconnect detection. A new round includes connected, ready players. Joining during a round puts the player in the lobby for the next one. Online sessions can recover after refreshing the same tab. An explicit host exit ends the party and there’s no host migration. The host keeps up to eight recent rounds in its tab session.
+- Standard invites use PeerJS’s public signaling with STUN-only ICE. The public site is hosted at [davea62.github.io/ARAMBravery](https://davea62.github.io/ARAMBravery/). Restrictive networks may require a TURN relay, so a direct connection is not guaranteed. The project uses no relay or application backend.
+- If public signaling is unavailable, open **Direct connection**. The host creates a direct party and generates an offer per guest. Send the offer through a private message, paste the returned answer, and let the data channel connect. Direct parties use native WebRTC with no signaling server. A disconnected direct guest can exchange a fresh offer and answer to reconnect before the grace period expires. Signaling-free negotiation still depends on a usable route between the peers.
+- Party codes and nicknames are for casual play. The host can inspect or alter its own browser state, and anyone with the invite code can request an available seat. Nicknames are remembered on the device, while reconnect credentials are scoped to the tab session. Treat direct connection codes as private.
 
 ## Patch data
 

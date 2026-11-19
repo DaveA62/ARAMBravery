@@ -1,29 +1,22 @@
 import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import {
-  AudioLines, BookOpen, Check, ChevronDown, ChevronUp, ClipboardCopy, Coins, Crosshair, Dices, Flame,
-  History, Link2, Monitor, RotateCw, Settings2, ShieldHalf, Shuffle, Sparkles, Star, Volume2, VolumeX, Zap,
+  AudioLines, BookOpen, Check, ChevronDown, ChevronUp, ClipboardCopy, Crosshair, Dices, Flame,
+  History, Link2, Monitor, Settings2, ShieldHalf, Shuffle, Sparkles, Star, Users, Volume2, VolumeX,
 } from 'lucide-react'
-import { champions, items, spells, DATA_VERSION, type Champion } from './data'
+import { champions, DATA_VERSION } from './data'
 import {
   challengeFromUrl, challengeKey, challengeSummary, challengeUrl, generateChallenge, loadLibrary, loadPreferences, newSeed, rememberChallenge, savePreferences,
   rerollChallenge, toggleFavorite, type Challenge, type Mode, type RerollAction, type Preferences,
 } from './domain'
-import { preloadArcade, Reel, useArcade, type ReelFace } from './arcade'
-import { AugmentPicker } from './augments/AugmentPicker'
-import { MAYHEM_START_LEVEL, skillNote } from './domain/skills'
+import { preloadArcade, Reel, useArcade } from './arcade'
+import { championFace, championPool, championSplash, Loadout, preloadChallenge, reelImages } from './Loadout'
 import { Art, ChampionPicker, copyText, Modal, useReducedMotion } from './ui'
+import { PartyLobby } from './party/Lobby'
+import { useParty } from './party/network'
+import { PartyResults } from './party/PartyResults'
 
-const artBase = import.meta.env.BASE_URL
 const startingChampion = champions.find(({ id }) => id === 'Jinx') ?? champions[0]
-const championFace = (champion: Champion): ReelFace => ({ id: champion.id, name: champion.name, image: champion.portrait })
-const championSplash = (champion: Champion) => champion.id === 'Jinx' ? artBase + 'art/jinx.webp' : champion.splash
-const faces = (entries: readonly { id: string; name: string; icon: string }[]): ReelFace[] =>
-  entries.map(({ id, name, icon }) => ({ id, name, image: icon }))
-const championPool = champions.filter((_, index) => index % Math.max(1, Math.floor(champions.length / 12)) === 0).slice(0, 12).map(championFace)
-const itemPool = faces(items.filter((_, index) => index % Math.max(1, Math.floor(items.length / 12)) === 0).slice(0, 12))
-const spellPool = faces(spells)
-const reelImages = [...championPool, ...itemPool, ...spellPool].map(face => face.image).filter((url): url is string => Boolean(url))
 const modes = [
   { id: 'little', title: 'A Little Bullshit', note: 'Controlled chaos', Icon: ShieldHalf },
   { id: 'straight', title: 'Straight Bullshit', note: 'Total chaos', Icon: Flame },
@@ -35,54 +28,6 @@ const stages = {
 const sparks = Array.from({ length: 23 }, (_, i) => ({
   left: (i * 43 + 7) % 100, top: (i * 29 + 14) % 100, delay: (i % 9) * -.64, size: i % 6 === 0 ? 3 : 2,
 }))
-
-function SkillCard({ challenge, shown, active, onLevel }: {
-  challenge: Challenge
-  shown: number
-  active: number
-  onLevel: (level: number) => void
-}) {
-  const stats = challenge.champion.id === 'Aphelios'
-  const statLabels = { Q: 'Attack Damage', W: 'Attack Speed', E: 'Lethality', R: 'Moonlight Vigil' }
-  const statKeys = { Q: 'AD', W: 'AS', E: 'Leth', R: 'R' }
-  const note = skillNote(challenge.champion.id)
-  return (
-    <section className={`board-panel skills${stats ? ' skill-stats' : ''}`} aria-labelledby="skill-title">
-      <div className="panel-heading">
-        <div className="panel-heading-title"><Crosshair size={17} /><h2 id="skill-title">Skill Order</h2></div>
-        <span className="panel-aside">Spawn points S1–S3 at level {MAYHEM_START_LEVEL}</span>
-      </div>
-      <div className="skill-grid" data-revealed={shown === challenge.skills.length || undefined}>
-        {challenge.skills.map(({ level, ability, rank, automatic }, index) => {
-          const spawn = level <= MAYHEM_START_LEVEL
-          const trackLevel = Math.max(level, MAYHEM_START_LEVEL)
-          const skillName = ability && (stats ? statLabels[ability] : challenge.champion.abilityNames?.[ability] || ability)
-          const skillKey = ability && (stats ? statKeys[ability] : ability)
-          const alreadySpent = !stats && ability && automatic?.includes(ability)
-          const innate = automatic?.filter((code) => stats || code !== ability)
-          const label = skillName ? `${skillName} rank ${rank}${alreadySpent ? ', already assigned' : ''}` : 'No point to spend'
-          const tooltip = innate?.length ? `${label} · Automatic ${innate.join(', ')}` : label
-          const ready = index < shown
-          return (
-            <button type="button" key={level} className={'skill-cell' + (ready ? ' skill-ready' : '')}
-              data-ability={ability ?? ''} data-spawn={spawn || undefined}
-              aria-label={`${spawn ? `Spawn point ${level}` : `Level ${level}`} · ${ready ? tooltip : 'Pending'}`}
-              aria-pressed={active === trackLevel} title={ready ? tooltip : undefined} disabled={!ready} onClick={() => onLevel(trackLevel)}>
-              <span className="skill-level">{spawn ? `S${level}` : level}</span>
-              <span className="skill-icon">
-                {ready && ability && !stats && <Art src={challenge.champion.abilityIcons[ability]} />}
-                <b>{ready ? skillKey ?? '–' : '·'}</b>
-                {ready && rank > 0 && <small className="skill-rank">{rank}</small>}
-                {ready && Boolean(automatic?.length) && <i aria-hidden="true">+</i>}
-              </span>
-            </button>
-          )
-        })}
-      </div>
-      {shown >= challenge.skills.length && note && <p className="skill-note">{note}</p>}
-    </section>
-  )
-}
 
 function Settings({ prefs, update, systemReduced }: {
   prefs: Preferences
@@ -113,6 +58,16 @@ function Settings({ prefs, update, systemReduced }: {
 }
 
 export default function App() {
+  const [initialCode] = useState(() => new URLSearchParams(window.location.search).get('party') ?? '')
+  const party = useParty()
+  const [partyView, setPartyView] = useState(Boolean(initialCode))
+  const showParty = (show: boolean) => {
+    if (show === partyView) return
+    arcade.skip()
+    setPartyView(show)
+    window.scrollTo({ top: 0, behavior: 'instant' })
+  }
+
   const [initial] = useState(() => {
     const fromLink = challengeFromUrl(window.location.href)
     return { fromLink, challenge: fromLink ?? generateChallenge({ seed: 'MAYHEM', mode: 'little', championId: startingChampion.id }) }
@@ -124,13 +79,23 @@ export default function App() {
   const [library, setLibrary] = useState(loadLibrary)
   const [dialog, setDialog] = useState<'champions' | 'settings' | 'library' | 'share' | null>(null)
   const [toast, setToast] = useState(() => !initial.fromLink && new URLSearchParams(location.search).has('seed') ? 'This challenge link uses an unsupported or invalid version.' : '')
-  const [skillLevel, setSkillLevel] = useState(0)
   const [lastChampion, setLastChampion] = useState(challenge.champion)
   const [controlsOpen, setControlsOpen] = useState(!preferences.compact)
   const reduced = useReducedMotion()
   const motionSetting = reduced ? 'off' : preferences.motion
   const arcade = useArcade({ muted: preferences.muted, master: preferences.masterVolume, effects: preferences.effectsVolume, motion: motionSetting })
-  const chaotic = mode === 'straight'
+  const chaotic = (partyView ? party.snapshot?.rules.mode : mode) === 'straight'
+  const partyRound = party.snapshot?.round
+  const partyConnected = party.status === 'hosting' || party.status === 'joined'
+
+  useEffect(() => {
+    if (party.snapshot?.code) setPartyView(true)
+  }, [party.snapshot?.code])
+
+  useEffect(() => {
+    if (partyView && !partyRound) arcade.skip()
+  }, [partyView, partyRound?.id, arcade.skip])
+
   const championTrack = arcade.tracks.champion
   const spinningChampion = championTrack?.phase === 'spinning' || championTrack?.phase === 'queued'
   const preview = !arcade.busy && selected && selected !== challenge.champion.id ? champions.find(({ id }) => id === selected) : undefined
@@ -161,8 +126,8 @@ export default function App() {
     try {
       const next = generateChallenge({ seed: newSeed(), mode, championId: selected })
       setLastChampion(displayedChampion)
-      preloadArcade([championSplash(next.champion), next.champion.portrait, ...next.items.map(item => item.icon), ...next.spells.map(spell => spell.icon)])
-      arcade.run('full', () => { setSkillLevel(0); commit(next) }, {
+      preloadChallenge(next)
+      arcade.run('full', () => commit(next), {
         chaotic, manualChampion: Boolean(selected), skillCount: next.skills.length,
       })
     } catch (error) {
@@ -187,7 +152,6 @@ export default function App() {
     arcade.skip()
     setMode(next.config.mode)
     setSelected(next.config.championId)
-    setSkillLevel(0)
     commit(next)
     setDialog(null)
     arcade.play('confirm')
@@ -213,7 +177,7 @@ export default function App() {
 
   const headerControls = (
     <>
-      <button type="button" className="icon-button" aria-label="Saved challenges" title="Saved challenges" onClick={() => setDialog('library')}><History size={19} /></button>
+      {!partyView && <button type="button" className="icon-button" aria-label="Saved challenges" title="Saved challenges" onClick={() => setDialog('library')}><History size={19} /></button>}
       <button type="button" className="icon-button desktop-icon" aria-label={compact ? 'Full view' : 'Second-monitor mode'} aria-pressed={compact} title="Second-monitor mode"
         onClick={() => updatePreferences({ compact: !compact })}><Monitor size={19} /></button>
       <button type="button" className="icon-button" aria-label={preferences.muted ? 'Unmute sound' : 'Mute sound'} aria-pressed={preferences.muted}
@@ -225,20 +189,27 @@ export default function App() {
   )
 
   return (
-    <div className={`app ${chaotic ? 'chaotic' : ''} ${compact ? 'compact' : ''} ${motionSetting === 'off' ? 'no-motion' : ''}`} data-phase={arcade.phase} onPointerDownCapture={arcade.unlock}>
+    <div className={`app ${chaotic ? 'chaotic' : ''} ${compact ? 'compact' : ''} ${partyView ? 'app-party' : ''} ${motionSetting === 'off' ? 'no-motion' : ''}`} data-phase={arcade.phase} onPointerDownCapture={arcade.unlock}>
       <header className="topbar">
         <div className="shell topbar-inner">
           <a href="#top" className="brand">
             <span className="brand-emblem"><Sparkles size={19} strokeWidth={1.7} /></span>
             <span><strong>ARAM <em>MAYHEM</em></strong><small>ULTIMATE BRAVERY</small></span>
           </a>
-          <nav className="top-nav" aria-label="Page sections">
-            <a href="#loadout">The Loadout</a><a href="#augment-picker">Augment Picker</a>
+          <nav className="mode-nav" aria-label="Game mode">
+            <button type="button" aria-pressed={!partyView} onClick={() => showParty(false)}><Dices size={16} /> Solo Mayhem</button>
+            <button type="button" aria-pressed={partyView} onClick={() => showParty(true)}><Users size={16} /> Party Mayhem</button>
           </nav>
           <div className="top-controls">{headerControls}</div>
         </div>
       </header>
       <main id="top">
+        {partyView ? <>
+          <PartyLobby party={party} initialCode={initialCode} play={arcade.play} onSolo={() => showParty(false)} />
+          {party.snapshot && partyRound && <PartyResults key={partyRound.id} snapshot={party.snapshot} round={partyRound}
+            playerId={party.playerId} clockOffset={party.clockOffset} connected={partyConnected} send={party.send} arcade={arcade}
+            reducedMotion={motionSetting === 'off'} compact={compact} />}
+        </> : <>
         <section className="hero" aria-label="Challenge machine">
           <div className="hero-backdrop" aria-hidden="true">
             <AnimatePresence initial={false}>
@@ -315,75 +286,17 @@ export default function App() {
         </section>
 
         <div className="shell gameplay">
-          <section id="loadout" className="loadout" aria-labelledby="loadout-title">
-            <div className="section-header">
-              <div>
-                <p className="section-kicker"><Zap size={13} /> YOUR CHALLENGE</p>
-                <h2 id="loadout-title">THE LOADOUT</h2>
-              </div>
-              <div className="challenge-actions">
-                <button type="button" className="small-button" disabled={arcade.busy} aria-pressed={isFavorite} onClick={favorite}><Star size={15} /> <span>Favorite</span></button>
-                <button type="button" className="small-button share-button" disabled={arcade.busy} onClick={() => setDialog('share')}><Link2 size={16} /> <span>Share</span></button>
-              </div>
-            </div>
-            <div className="loadout-grid">
-              <section className="board-panel items-panel" aria-labelledby="item-title">
-                <div className="panel-heading">
-                  <div className="panel-heading-title"><Coins size={17} /><h3 id="item-title">Item Build</h3><span className="panel-aside">Purchase order</span></div>
-                  <button type="button" className="small-button" disabled={arcade.busy} onClick={() => reroll({ type: 'items' })}><RotateCw size={14} /> Reroll Items</button>
-                </div>
-                <div className="items-grid">
-                  {challenge.items.map((item, i) => {
-                    const track = arcade.tracks.items[i]
-                    const hidden = track?.phase === 'queued' || track?.phase === 'spinning'
-                    return (
-                      <div className="item-cell" key={i}>
-                        <div className="item-window" tabIndex={hidden ? undefined : 0} aria-label={hidden ? 'Rolling item ' + (i + 1) : item.name + ', ' + item.price + ' gold'}>
-                          <Reel face={{ id: item.id, name: item.name, image: item.icon }} pool={itemPool} track={track} variant="item" />
-                          <span className="slot-number">{String(i + 1).padStart(2, '0')}</span>
-                          {!hidden && <span className="item-tooltip" role="tooltip"><strong>{item.name}</strong><span>{item.description}</span><small>{item.price.toLocaleString()} gold</small>{item.upgradesTo && <small>Upgrades to {item.upgradesTo} when fully stacked.</small>}</span>}
-                        </div>
-                        <span className="item-name" title={hidden ? undefined : item.name}>{hidden ? 'Rolling…' : item.name}</span>
-                        <button type="button" className="reel-reroll" disabled={arcade.busy} onClick={() => reroll({ type: 'item', index: i })}
-                          aria-label={`Reroll item slot ${i + 1}`} title={`Reroll item slot ${i + 1}`}><RotateCw size={14} /></button>
-                      </div>
-                    )
-                  })}
-                </div>
-              </section>
-
-              <section className="board-panel spells-panel" aria-labelledby="spell-title">
-                <div className="panel-heading"><div className="panel-heading-title"><Zap size={17} /><h3 id="spell-title">Summoner Spells</h3></div></div>
-                <div className="spells-grid">
-                  {challenge.spells.map((spell, i) => {
-                    const track = arcade.tracks.spells[i]
-                    const hidden = track?.phase === 'queued' || track?.phase === 'spinning'
-                    return (
-                      <div className="item-cell" key={i}>
-                        <div className="item-window spell-window" tabIndex={hidden ? undefined : 0} aria-label={hidden ? 'Rolling spell ' + (i + 1) : spell.name}>
-                          <Reel face={{ id: spell.id, name: spell.name, image: spell.icon }} pool={spellPool} track={track} variant="spell" />
-                          {!hidden && <span className="item-tooltip" role="tooltip"><strong>{spell.name}</strong><span>{spell.description}</span></span>}
-                        </div>
-                        <span className="item-name">{hidden ? 'Rolling…' : spell.name}</span>
-                        <button type="button" className="reel-reroll" disabled={arcade.busy} title={`Reroll spell slot ${i + 1}`}
-                          aria-label={`Reroll spell slot ${i + 1}`} onClick={() => reroll({ type: 'spell', index: i })}><RotateCw size={14} /></button>
-                      </div>
-                    )
-                  })}
-                </div>
-              </section>
-            </div>
-            <SkillCard challenge={challenge} shown={arcade.revealedSkills} active={skillLevel} onLevel={(level) => { setSkillLevel(level); arcade.play('level') }} />
-            <div className="seed-row">
-              <span><span className="seed-caption">CHALLENGE SEED</span> <b>{arcade.complete ? challenge.config.seed : '······'}</b></span>
-              <span>{challenge.champion.name} · {modes.find(({ id }) => id === challenge.config.mode)?.title}</span>
-            </div>
-          </section>
-          <div id="augment-picker" className="augment-anchor">
-            <AugmentPicker challenge={arcade.showAugments ? challenge : null} reducedMotion={motionSetting === 'off'} compact={compact}
-              playSound={event => arcade.play(event === 'augmentReroll' ? 'warning' : event === 'augmentFlip' ? 'tap' : 'confirm')} />
-          </div>
+          <Loadout challenge={challenge} arcade={arcade} compact={compact} reducedMotion={motionSetting === 'off'}
+            onItemReroll={index => reroll({ type: 'item', index })}
+            onSpellReroll={index => reroll({ type: 'spell', index })}
+            onRerollAll={() => reroll({ type: 'items' })}
+            headingActions={<div className="challenge-actions">
+              <button type="button" className="small-button" disabled={arcade.busy} aria-pressed={isFavorite} onClick={favorite}><Star size={15} /> <span>Favorite</span></button>
+              <button type="button" className="small-button share-button" disabled={arcade.busy} onClick={() => setDialog('share')}><Link2 size={16} /> <span>Share</span></button>
+            </div>}
+          />
         </div>
+        </>}
       </main>
       <footer className="footer">
         <div className="shell footer-inner"><span><Sparkles size={15} /> ARAM MAYHEM · ULTIMATE BRAVERY</span><span>Patch data {DATA_VERSION} · Unofficial Riot Games fan project</span><a href="https://github.com/DaveA62/ARAMBravery"><BookOpen size={15} /> Source &amp; data notes</a></div>

@@ -1,0 +1,56 @@
+.manual-signaling {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  color: var(--text, #eee8f2);
+}
+.manual-signaling p {
+  margin: 0;
+  color: #bfb6cb;
+  font-size: 13px;
+  line-height: 1.45;
+}
+.manual-code {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  font-size: 13px;
+  color: #d9cde4;
+}
+.manual-code textarea {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  min-height: 74px;
+  padding: 9px;
+  border: 1px solid #59445e;
+  border-radius: 4px;
+  background: #10101c;
+  color: #f0d393;
+  font: 13px/1.5 var(--mono, monospace);
+  overflow-wrap: anywhere;
+  resize: vertical;
+}
+.manual-code textarea:focus-visible {
+  outline: 2px solid var(--cyan, #72eafa);
+  outline-offset: 2px;
+}
+.manual-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.manual-signaling button {
+  min-height: 38px;
+}
+.manual-exchange {
+  justify-self: start;
+}
+.manual-signaling .manual-error {
+  color: #ffa6ba;
+}
+@media (pointer: coarse) {
+  .manual-signaling button {
+    min-height: 44px;
+  }
+}
