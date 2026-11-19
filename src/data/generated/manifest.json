@@ -1,0 +1,37 @@
+{
+  "dataDragon": "16.23.1",
+  "clientPatch": "16.23",
+  "displayPatch": "26.23",
+  "queue": 2400,
+  "mode": "KIWI",
+  "coverage": {
+    "champions": true,
+    "items": true,
+    "spells": true,
+    "augments": false
+  },
+  "limits": {
+    "conditionalShopItems": [
+      "223069",
+      "226668",
+      "228002",
+      "994403"
+    ],
+    "missingAugmentDescriptions": [],
+    "disabledAugments": [
+      "Quest_Sneakerhead",
+      "SnapBack"
+    ],
+    "unconfirmedAugmentAvailability": [
+      "Endless Decimation",
+      "Forged By The Master",
+      "Hellbent",
+      "Nature is Healing",
+      "Shark Bait",
+      "Snowblast",
+      "Spirit Bomb",
+      "Squishy Slappy Grab",
+      "Tooth Fairy"
+    ]
+  }
+}

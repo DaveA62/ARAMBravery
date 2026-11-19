@@ -1,0 +1,50 @@
+[
+  {
+    "id": "SummonerBarrier",
+    "name": "Barrier",
+    "description": "Gain a brief Shield.",
+    "icon": "https://ddragon.leagueoflegends.com/cdn/16.23.1/img/spell/SummonerBarrier.png"
+  },
+  {
+    "id": "SummonerBoost",
+    "name": "Cleanse",
+    "description": "Removes all disables (excluding suppression and airborne) and summoner spell debuffs affecting your champion and gives Tenacity.",
+    "icon": "https://ddragon.leagueoflegends.com/cdn/16.23.1/img/spell/SummonerBoost.png"
+  },
+  {
+    "id": "SummonerDot",
+    "name": "Ignite",
+    "description": "Deals true damage over time to target enemy champion and reduces healing effects on them for the duration.",
+    "icon": "https://ddragon.leagueoflegends.com/cdn/16.23.1/img/spell/SummonerDot.png"
+  },
+  {
+    "id": "SummonerFlash",
+    "name": "Flash",
+    "description": "Teleports you a short distance toward your cursor.",
+    "icon": "https://ddragon.leagueoflegends.com/cdn/16.23.1/img/spell/SummonerFlash.png"
+  },
+  {
+    "id": "SummonerHaste",
+    "name": "Ghost",
+    "description": "Gain Move Speed and ignore unit collision for the duration.",
+    "icon": "https://ddragon.leagueoflegends.com/cdn/16.23.1/img/spell/SummonerHaste.png"
+  },
+  {
+    "id": "SummonerHeal",
+    "name": "Heal",
+    "description": "Restores Health and grants Move Speed to you and target allied champion.",
+    "icon": "https://ddragon.leagueoflegends.com/cdn/16.23.1/img/spell/SummonerHeal.png"
+  },
+  {
+    "id": "SummonerMana",
+    "name": "Clarity",
+    "description": "Restores your and ally champion's Mana.",
+    "icon": "https://ddragon.leagueoflegends.com/cdn/16.23.1/img/spell/SummonerMana.png"
+  },
+  {
+    "id": "SummonerSnowball",
+    "name": "Mark",
+    "description": "Throw a snowball in a straight line at your enemies. If it hits an enemy, they become marked, granting True Sight, and your champion can quickly travel to the marked target as a follow up.",
+    "icon": "https://ddragon.leagueoflegends.com/cdn/16.23.1/img/spell/SummonerSnowball.png"
+  }
+]
