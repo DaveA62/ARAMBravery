@@ -1,8 +1,9 @@
 import { DATA_VERSION } from '../data'
+import { CURATION_VERSION } from '../data/curated'
 import { GENERATOR_VERSION, type ChallengeConfig, type Mode } from '../domain'
 import { isChallengeInput } from '../domain/challenge'
 
-export const PARTY_VERSION = `1/${DATA_VERSION}/${GENERATOR_VERSION}`
+export const PARTY_VERSION = `2/${DATA_VERSION}/${GENERATOR_VERSION}/${CURATION_VERSION}`
 export const MAX_PLAYERS = 5
 export const RECONNECT_GRACE = 45_000
 export const COUNTDOWN = 1_100
@@ -41,7 +42,7 @@ export function validNickname(value: string) {
 }
 
 export type Allowance = 0 | 1 | 2 | 3 | 5 | null
-export type PartyRules = { mode: Mode; allowance: Allowance }
+export type PartyRules = { mode: Mode; allowance: Allowance; curated?: boolean; friendlyFire?: boolean }
 export type PartyPlayer = {
   id: string
   nickname: string
@@ -54,13 +55,15 @@ export type PartyBuild = {
   config: ChallengeConfig
   remaining: number | null
   used: number
-  lastReroll?: { index: number; requestId: string }
+  lockedItemSlots?: number[]
+  lastReroll?: { index: number; requestId: string; vetoBy?: string }
 }
 export type PartyRound = {
   id: string
   startsAt: number
   unlockAt: number
   builds: Record<string, PartyBuild>
+  vetoedBy?: string[]
 }
 export type PartySnapshot = {
   code: string
@@ -78,6 +81,7 @@ export type PartyAction =
   | { type: 'settings'; rules: PartyRules }
   | { type: 'roll' }
   | { type: 'reroll'; index: number; roundId: string; requestId: string }
+  | { type: 'veto'; targetId: string; index: number; itemId: string; roundId: string; requestId: string }
   | { type: 'next'; roundId: string }
 
 export type ClientMessage =
@@ -120,8 +124,14 @@ function allowance(value: unknown): value is Allowance {
   return value === null || value === 0 || value === 1 || value === 2 || value === 3 || value === 5
 }
 
-function rules(value: unknown): value is PartyRules {
-  return object(value) && (value.mode === 'little' || value.mode === 'straight') && allowance(value.allowance)
+export function isPartyRules(value: unknown): value is PartyRules {
+  return object(value) && (value.mode === 'little' || value.mode === 'straight') && allowance(value.allowance) &&
+    (value.curated === undefined || typeof value.curated === 'boolean') &&
+    (value.friendlyFire === undefined || typeof value.friendlyFire === 'boolean')
+}
+
+function slotIndex(value: unknown): value is number {
+  return integer(value) && value < 6
 }
 
 function action(value: unknown): value is PartyAction {
@@ -130,9 +140,11 @@ function action(value: unknown): value is PartyAction {
     case 'nickname': return text(value.nickname)
     case 'champion': return value.championId === undefined || text(value.championId, 40)
     case 'ready': return typeof value.ready === 'boolean'
-    case 'settings': return rules(value.rules)
+    case 'settings': return isPartyRules(value.rules)
     case 'roll': return true
-    case 'reroll': return integer(value.index) && value.index < 6 && text(value.roundId) && text(value.requestId)
+    case 'reroll': return slotIndex(value.index) && text(value.roundId) && text(value.requestId)
+    case 'veto': return slotIndex(value.index) && text(value.roundId) && text(value.requestId) &&
+      text(value.targetId) && text(value.itemId, 40)
     case 'next': return text(value.roundId)
     default: return false
   }
@@ -160,19 +172,25 @@ function player(value: unknown): value is PartyPlayer {
 function build(value: unknown): value is PartyBuild {
   return object(value) && text(value.nickname) && validNickname(value.nickname) && isChallengeInput(value.config) && Array.isArray(value.config.rerolls) &&
     (value.remaining === null || (integer(value.remaining) && value.remaining <= 5)) && integer(value.used) &&
-    (value.lastReroll === undefined || (object(value.lastReroll) && integer(value.lastReroll.index) &&
-      value.lastReroll.index < 6 && text(value.lastReroll.requestId)))
+    (value.lockedItemSlots === undefined || (Array.isArray(value.lockedItemSlots) && value.lockedItemSlots.length <= 6 &&
+      value.lockedItemSlots.every(slotIndex) && new Set(value.lockedItemSlots).size === value.lockedItemSlots.length)) &&
+    (value.lastReroll === undefined || (object(value.lastReroll) && slotIndex(value.lastReroll.index) &&
+      text(value.lastReroll.requestId) && (value.lastReroll.vetoBy === undefined ||
+        (text(value.lastReroll.vetoBy) && validNickname(value.lastReroll.vetoBy)))))
 }
 
 function round(value: unknown): value is PartyRound {
   return object(value) && text(value.id) && timestamp(value.startsAt) && timestamp(value.unlockAt) &&
     value.unlockAt >= value.startsAt && object(value.builds) &&
-    Object.keys(value.builds).length <= MAX_PLAYERS && Object.values(value.builds).every(build)
+    Object.keys(value.builds).length <= MAX_PLAYERS && Object.values(value.builds).every(build) &&
+    (value.vetoedBy === undefined || (Array.isArray(value.vetoedBy) && value.vetoedBy.length <= MAX_PLAYERS &&
+      value.vetoedBy.every(id => text(id) && Object.hasOwn(value.builds as object, id)) &&
+      new Set(value.vetoedBy).size === value.vetoedBy.length))
 }
 
 function snapshot(value: unknown): value is PartySnapshot {
   return object(value) && typeof value.code === 'string' && validCode(value.code) &&
-    integer(value.revision) && text(value.hostId) && rules(value.rules) &&
+    integer(value.revision) && text(value.hostId) && isPartyRules(value.rules) &&
     Array.isArray(value.players) && value.players.length <= MAX_PLAYERS &&
     value.players.every(player) && value.players.some(member => member.id === value.hostId) &&
     (value.round === null || round(value.round)) &&

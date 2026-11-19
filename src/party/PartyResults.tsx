@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion } from 'motion/react'
-import { Crown, Eye, Gauge, RotateCw, Sparkles, Users, Zap } from 'lucide-react'
+import { Crown, Eye, Gauge, LockKeyhole, RotateCw, Sparkles, Swords, Users, Zap } from 'lucide-react'
 import { Reel, type useArcade } from '../arcade'
 import { challengeKey, generateChallenge, type Challenge } from '../domain'
 import { championFace, championPool, championSplash, Loadout, preloadChallenge } from '../Loadout'
@@ -32,6 +32,7 @@ export function PartyResults({ snapshot, round, playerId, connected, clockOffset
   const [challenge, setChallenge] = useState<Challenge>()
   const [inspected, setInspected] = useState<string>()
   const [pending, setPending] = useState<string>()
+  const [vetoPending, setVetoPending] = useState(false)
   const [now, setNow] = useState(() => Date.now() + clockOffset)
   const [animated, setAnimated] = useState(false)
   const [revealed, setRevealed] = useState(false)
@@ -45,6 +46,8 @@ export function PartyResults({ snapshot, round, playerId, connected, clockOffset
   const untilStart = Math.max(0, round.startsAt - now)
   const locked = now < round.unlockAt
   const host = snapshot.hostId === playerId
+  const vetoUsed = Boolean(playerId && round.vetoedBy?.includes(playerId))
+  const canVeto = Boolean(snapshot.rules.friendlyFire && readyBuild && connected && !locked && !busy && !vetoUsed && !vetoPending)
 
   useEffect(() => {
     if (!locked) return
@@ -82,15 +85,19 @@ export function PartyResults({ snapshot, round, playerId, connected, clockOffset
     if (!generated || !began.current || lastApplied.current === buildKey || busy) return
     lastApplied.current = buildKey
     const reroll = readyBuild?.lastReroll
-    if (reroll && reroll.requestId === pending) {
+    const ownRequest = reroll?.requestId === pending && Boolean(pending)
+    const incomingVeto = Boolean(reroll?.vetoBy && tab === 'mine' && challenge &&
+      generated.config.rerolls.length === challenge.config.rerolls.length + 1)
+    if (reroll && (ownRequest || incomingVeto)) {
       preloadChallenge(generated)
-      setPending(undefined)
+      if (ownRequest) setPending(undefined)
+      if (incomingVeto) arcade.play('warning')
       if (run({ item: reroll.index }, () => setChallenge(generated), {
         chaotic: generated.config.mode === 'straight',
       })) return
     }
     setChallenge(generated)
-  }, [busy, generated, buildKey, readyBuild?.lastReroll, pending, run])
+  }, [busy, generated, buildKey, readyBuild?.lastReroll, pending, run, tab, challenge, arcade.play])
 
   useEffect(() => {
     if (!pending) return
@@ -99,14 +106,27 @@ export function PartyResults({ snapshot, round, playerId, connected, clockOffset
   }, [pending])
 
   useEffect(() => {
+    if (!vetoPending || vetoUsed) return
+    const timer = window.setTimeout(() => setVetoPending(false), 3000)
+    return () => window.clearTimeout(timer)
+  }, [vetoPending, vetoUsed])
+
+  useEffect(() => {
     if (challenge && !busy) setRevealed(true)
   }, [challenge, busy])
 
   const rerollItem = (index: number) => {
-    if (!readyBuild || !challenge || !connected || locked || busy || pending || readyBuild.remaining === 0) return
+    if (!readyBuild || !challenge || !connected || locked || busy || pending || readyBuild.remaining === 0 ||
+        readyBuild.lockedItemSlots?.includes(index)) return
     const requestId = crypto.randomUUID()
     setPending(requestId)
     send({ type: 'reroll', roundId: round.id, index, requestId })
+  }
+
+  const vetoItem = (targetId: string, index: number, itemId: string) => {
+    if (!canVeto || targetId === playerId) return
+    setVetoPending(true)
+    send({ type: 'veto', roundId: round.id, requestId: crypto.randomUUID(), targetId, index, itemId })
   }
 
   const finishNow = () => {
@@ -164,18 +184,29 @@ export function PartyResults({ snapshot, round, playerId, connected, clockOffset
           animate={{ y: 0, opacity: 1 }}>{allowanceLabel(readyBuild.remaining)}</motion.strong>
         <span>{readyBuild.remaining === 0 ? 'YOU’RE STUCK WITH IT.' : readyBuild.remaining === null ? 'Unlimited item rerolls' : 'Item rerolls remaining'}</span>
         {pending && <small>Requesting reroll…</small>}
+        {readyBuild.lastReroll?.vetoBy && <small><LockKeyhole size={13} aria-hidden="true" /> {readyBuild.lastReroll.vetoBy} vetoed slot {readyBuild.lastReroll.index + 1}</small>}
       </div>}
 
       {!showTeam && challenge && <Loadout challenge={challenge} arcade={arcade} showHeading={false} compact={compact} reducedMotion={reducedMotion}
-        onItemReroll={rerollItem} itemLocked={locked || !connected || Boolean(pending) || readyBuild?.remaining === 0} />}
+        onItemReroll={rerollItem} itemLocked={locked || !connected || Boolean(pending) || readyBuild?.remaining === 0}
+        lockedItemSlots={readyBuild?.lockedItemSlots} />}
       {!showTeam && !readyBuild && <p className="party-results-note">Your build will appear when the host rolls the next round.</p>}
 
-      {showTeam && (canInspect ? <Circus snapshot={snapshot} builds={rosterBuilds} onInspect={setInspected} /> :
+      {showTeam && canInspect && snapshot.rules.friendlyFire && readyBuild && (
+        <div className="party-friendly-fire" aria-live="polite">
+          <Swords size={18} aria-hidden="true" />
+          <strong>Friendly Fire</strong>
+          <span>{vetoUsed ? 'Veto spent.' : vetoPending ? 'Sending veto…' : 'You have one veto. Replace a teammate’s item and lock its slot for this round.'}</span>
+        </div>
+      )}
+      {showTeam && (canInspect ? <Circus snapshot={snapshot} builds={rosterBuilds} playerId={playerId} onInspect={setInspected}
+        onVeto={canVeto ? vetoItem : undefined} /> :
         <p className="party-results-note">The circus is rolling. Team builds will appear in a moment.</p>)}
       {showTeam && inspectedBuild && <Modal title={inspectedBuild.build.nickname + '’s Build'} wide onClose={() => setInspected(undefined)}>
         <div className="party-inspection">
           <p className="party-results-note">{inspectedBuild.challenge.champion.name} · {allowanceLabel(inspectedBuild.build.remaining)} item rerolls remaining</p>
-          <Loadout challenge={inspectedBuild.challenge} arcade={arcade} showHeading={false} compact={compact} reducedMotion={reducedMotion} />
+          <Loadout challenge={inspectedBuild.challenge} arcade={arcade} showHeading={false} compact={compact} reducedMotion={reducedMotion}
+            lockedItemSlots={inspectedBuild.build.lockedItemSlots} />
         </div>
       </Modal>}
     </section>
@@ -184,7 +215,13 @@ export function PartyResults({ snapshot, round, playerId, connected, clockOffset
 
 type CircusBuild = { id: string; build: PartyBuild; challenge: Challenge }
 
-function Circus({ snapshot, builds, onInspect }: { snapshot: PartySnapshot; builds: CircusBuild[]; onInspect: (id: string) => void }) {
+function Circus({ snapshot, builds, playerId, onInspect, onVeto }: {
+  snapshot: PartySnapshot
+  builds: CircusBuild[]
+  playerId: string | null
+  onInspect: (id: string) => void
+  onVeto?: (targetId: string, index: number, itemId: string) => void
+}) {
   const itemCounts = new Map<string, number>()
   for (const { challenge } of builds) {
     for (const { name } of challenge.items) itemCounts.set(name, (itemCounts.get(name) ?? 0) + 1)
@@ -200,6 +237,7 @@ function Circus({ snapshot, builds, onInspect }: { snapshot: PartySnapshot; buil
       </dl>
       <div className="party-circus">
         {builds.map(({ id, build, challenge }) => {
+          const veto = id !== playerId && snapshot.players.some(member => member.id === id && member.connected) ? onVeto : undefined
           return (
             <article key={id} className="board-panel party-circus-card">
               <div className="party-circus-heading">
@@ -207,8 +245,20 @@ function Circus({ snapshot, builds, onInspect }: { snapshot: PartySnapshot; buil
                 <div><h2>{id === snapshot.hostId && <Crown size={15} aria-label="Host" />} {build.nickname}</h2><p>{challenge.champion.name}</p></div>
                 <span className="party-circus-allowance" title="Item rerolls remaining"><Gauge size={14} /> {allowanceLabel(build.remaining)}</span>
               </div>
-              <ol className="party-team-items" aria-label="Purchase order">{challenge.items.map(item =>
-                <li key={item.id} title={item.name}><Art src={item.icon} alt={item.name} /></li>)}</ol>
+              <ol className="party-team-items" aria-label="Purchase order">{challenge.items.map((item, index) => {
+                const slotLocked = Boolean(build.lockedItemSlots?.includes(index))
+                return (
+                  <li key={index}>
+                    <div className="party-team-item-art" title={item.name + (slotLocked ? ' · Locked for this round' : '')} data-locked={slotLocked || undefined}>
+                      <Art src={item.icon} alt={item.name} />
+                      {slotLocked && <span className="party-team-lock" role="img" aria-label="Locked for this round"><LockKeyhole size={13} /></span>}
+                    </div>
+                    {veto && !slotLocked && <button type="button" className="party-veto"
+                      aria-label={`Veto ${build.nickname}’s ${item.name}`}
+                      onClick={() => veto(id, index, item.id)}>Veto</button>}
+                  </li>
+                )
+              })}</ol>
               <div className="party-circus-footer">
                 <div className="party-team-spells" aria-label="Summoner spells">{challenge.spells.map(spell => <Art key={spell.id} src={spell.icon} alt={spell.name} />)}</div>
                 <button type="button" className="small-button" onClick={() => onInspect(id)}><Eye size={15} /> Inspect build</button>

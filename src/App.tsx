@@ -74,6 +74,7 @@ export default function App() {
   })
   const [challenge, setChallenge] = useState(initial.challenge)
   const [mode, setMode] = useState<Mode>(initial.challenge.config.mode)
+  const [curated, setCurated] = useState(Boolean(initial.challenge.config.curated))
   const [selected, setSelected] = useState<string | undefined>(initial.fromLink?.config.championId)
   const [preferences, setPreferences] = useState(() => loadPreferences(window.matchMedia('(max-width: 640px)').matches ? 'short' : 'full'))
   const [library, setLibrary] = useState(loadLibrary)
@@ -124,7 +125,7 @@ export default function App() {
   const roll = () => {
     if (arcade.busy) return
     try {
-      const next = generateChallenge({ seed: newSeed(), mode, championId: selected })
+      const next = generateChallenge({ seed: newSeed(), mode, championId: selected, curated: curated || undefined })
       setLastChampion(displayedChampion)
       preloadChallenge(next)
       arcade.run('full', () => commit(next), {
@@ -151,6 +152,7 @@ export default function App() {
   const load = (next: Challenge) => {
     arcade.skip()
     setMode(next.config.mode)
+    setCurated(Boolean(next.config.curated))
     setSelected(next.config.championId)
     commit(next)
     setDialog(null)
@@ -254,6 +256,17 @@ export default function App() {
                       ))}
                     </div>
                   </div>
+                  <label className="rule-toggle machine-curated">
+                    <input type="checkbox" aria-label="Curated Bullshit" aria-describedby="solo-curated-note"
+                      checked={curated} disabled={arcade.busy} onChange={event => {
+                        setCurated(event.target.checked)
+                        arcade.play('mode', chaotic)
+                      }} />
+                    <span>
+                      <strong>Curated Bullshit</strong>
+                      <small id="solo-curated-note">Use an off-meta MOBAFire build when one fits this mode.</small>
+                    </span>
+                  </label>
                 </div>
                 <div className="roll-zone">
                   <button type="button" className="roll-button" disabled={arcade.busy} onClick={roll}

@@ -2,15 +2,13 @@ import { champions } from '../data'
 import { generateChallenge, newSeed, rerollChallenge, type Challenge } from '../domain'
 import {
   COUNTDOWN, MAX_PLAYERS, PARTY_VERSION, RECONNECT_GRACE, ROLL_LOCK,
-  normalizeCode, normalizeNickname, validCode, validNickname,
-  type Allowance, type PartyAction, type PartyBuild, type PartyPlayer, type PartyRound,
-  type PartyRules, type PartySnapshot,
+  isPartyRules, normalizeCode, normalizeNickname, validCode, validNickname,
+  type PartyAction, type PartyBuild, type PartyPlayer, type PartyRound, type PartySnapshot,
 } from './protocol'
 
 const MAX_HISTORY = 8
 const MAX_ACTIVITY = 12
 const championIds = new Set(champions.map(({ id }) => id))
-const allowances = new Set<Allowance>([0, 1, 2, 3, 5, null])
 
 interface Identity {
   playerId: string
@@ -44,11 +42,6 @@ const privateToken = () => globalThis.crypto.randomUUID()
 const nicknameKey = (value: string) => normalizeNickname(value).toUpperCase()
 const validToken = (token: unknown): token is string =>
   typeof token === 'string' && token.length >= 16 && token.length <= 128 && /^[A-Za-z0-9_-]+$/.test(token)
-
-function validRules(rules: unknown): rules is PartyRules {
-  if (!rules || typeof rules !== 'object' || !('mode' in rules) || !('allowance' in rules)) return false
-  return (rules.mode === 'little' || rules.mode === 'straight') && allowances.has(rules.allowance as Allowance)
-}
 
 export class PartyAuthority {
   private state: PartySnapshot
@@ -107,7 +100,7 @@ export class PartyAuthority {
     const saved = structuredClone(checkpoint)
     const { snapshot, sessions, history, rerollRequests } = saved
     const host = snapshot?.players?.find(({ id }) => id === snapshot.hostId)
-    if (!host || !validRules(snapshot.rules) || !Array.isArray(sessions) ||
+    if (!host || !isPartyRules(snapshot.rules) || !Array.isArray(sessions) ||
         !Array.isArray(history) || !Array.isArray(rerollRequests) || snapshot.players.length > MAX_PLAYERS ||
         !snapshot.players.every((player) => sessions.some((session) => session.playerId === player.id && validToken(session.token)))) {
       throw new Error('The saved party is incomplete.')
@@ -238,14 +231,19 @@ export class PartyAuthority {
       case 'settings': {
         if (!host) return reject('Only the host can change the rules.')
         if (round) return reject('Rules can change in the lobby between rounds.')
-        if (!validRules(action.rules)) return reject('Choose a supported chaos mode and item reroll allowance.')
-        if (action.rules.mode === this.state.rules.mode && action.rules.allowance === this.state.rules.allowance) return unchanged
-        const modeChanged = this.state.rules.mode !== action.rules.mode
-        this.state.rules = { mode: action.rules.mode, allowance: action.rules.allowance }
+        if (!isPartyRules(action.rules)) return reject('Choose a supported chaos mode and item reroll allowance.')
+        const { mode, allowance, curated = false, friendlyFire = false } = action.rules
+        const previous = this.state.rules
+        const changes = [
+          mode === previous.mode ? '' : mode === 'straight' ? 'Straight Bullshit' : 'A Little Bullshit',
+          allowance === previous.allowance ? '' : allowance === null ? 'unlimited rerolls' : `${allowance} rerolls per player`,
+          curated === Boolean(previous.curated) ? '' : `Curated Bullshit ${curated ? 'on' : 'off'}`,
+          friendlyFire === Boolean(previous.friendlyFire) ? '' : `Friendly Fire ${friendlyFire ? 'on' : 'off'}`,
+        ].filter(Boolean)
+        if (!changes.length) return unchanged
+        this.state.rules = { mode, allowance, ...(curated && { curated }), ...(friendlyFire && { friendlyFire }) }
         this.state.players = this.state.players.map(member => ({ ...member, ready: false }))
-        const rule = modeChanged ? (action.rules.mode === 'straight' ? 'Straight Bullshit' : 'A Little Bullshit') :
-          action.rules.allowance === null ? 'unlimited rerolls' : String(action.rules.allowance) + ' rerolls per player'
-        this.record(player.nickname + ' set ' + rule + '.')
+        this.record(player.nickname + ' set ' + changes.join(', ') + '.')
         return changed
       }
 
@@ -254,7 +252,8 @@ export class PartyAuthority {
         return this.roll()
 
       case 'reroll':
-        return this.reroll(playerId, action)
+      case 'veto':
+        return this.rerollItem(player, action)
 
       case 'next':
         if (!host) return reject('Only the host can open the next round.')
@@ -278,12 +277,13 @@ export class PartyAuthority {
     if (this.state.round) return reject('Open the next lobby before rolling again.')
     const participants = this.state.players.filter((player) => player.connected)
     if (participants.some((player) => !player.ready)) return reject('Every connected player must be ready.')
-    const { mode, allowance } = this.state.rules
+    const { mode, allowance, curated } = this.state.rules
     try {
       const roundSeed = this.createSeed()
       const generated = participants.map((player, slot) => ({ player, challenge: generateChallenge({
         seed: `${roundSeed}-${slot + 1}`,
         mode,
+        curated,
         championId: player.championId,
       }) }))
       const builds = Object.fromEntries(generated.map(({ player, challenge: { config } }) =>
@@ -299,36 +299,57 @@ export class PartyAuthority {
     }
   }
 
-  private reroll(playerId: string, action: Extract<PartyAction, { type: 'reroll' }>): Outcome {
+  private rerollItem(actor: PartyPlayer, action: Extract<PartyAction, { type: 'reroll' | 'veto' }>): Outcome {
     const { round } = this.state
     if (!round || round.id !== action.roundId) return reject('That round has already ended.')
-    const challenge = this.challenges.get(playerId)
-    const build = round.builds[playerId]
-    if (!build || !challenge) return reject('You can roll with the group in the next lobby.')
-    const requests = this.rerollRequests.get(playerId)
-    if (requests?.has(action.requestId)) return unchanged
     if (this.now() < round.unlockAt) return reject('Wait for the builds to lock in.')
     if (!Number.isInteger(action.index) || action.index < 0 || action.index > 5 ||
         typeof action.requestId !== 'string' || !action.requestId || action.requestId.length > 128) {
       return reject('Invalid item reroll request.')
     }
-    if (build.remaining === 0) return reject('You have no item rerolls left.')
+    if (!Object.hasOwn(round.builds, actor.id)) return reject('You can roll with the group in the next lobby.')
+
+    const requests = this.rerollRequests.get(actor.id)
+    if (requests?.has(action.requestId)) return unchanged
+
+    const veto = action.type === 'veto'
+    const targetId = veto ? action.targetId : actor.id
+    if (veto) {
+      if (!this.state.rules.friendlyFire) return reject('Friendly Fire is off.')
+      if (actor.id === targetId) return reject('Choose another player’s item to veto.')
+      if (round.vetoedBy?.includes(actor.id)) return reject('You have already used your veto this round.')
+      if (!this.player(targetId)?.connected) return reject('That player is no longer connected.')
+    }
+    const challenge = this.challenges.get(targetId)
+    const build = round.builds[targetId]
+    if (!build || !challenge) return reject('That player has no build in this round.')
+    if (build.lockedItemSlots?.includes(action.index)) return reject('That slot is locked for this round.')
+    if (veto && challenge.items[action.index].id !== action.itemId) return reject('That item has already changed. Pick an item from the updated build.')
+    if (!veto && build.remaining === 0) return reject('You have no item rerolls left.')
 
     try {
       const updated = rerollChallenge(challenge, { type: 'item', index: action.index })
-      if (updated.items[action.index].id === challenge.items[action.index].id) return reject('This slot has no legal replacement.')
+      const replacement = updated.items[action.index]
+      if (replacement.id === challenge.items[action.index].id) return reject('This slot has no legal replacement.')
       const nextBuild: PartyBuild = {
-        nickname: build.nickname,
+        ...build,
         config: updated.config,
-        remaining: build.remaining === null ? null : build.remaining - 1,
-        used: build.used + 1,
-        lastReroll: { index: action.index, requestId: action.requestId },
+        lastReroll: { index: action.index, requestId: action.requestId, ...(veto && { vetoBy: actor.nickname }) },
       }
-      this.challenges.set(playerId, updated)
-      round.builds[playerId] = nextBuild
+      if (veto) {
+        nextBuild.lockedItemSlots = [...(build.lockedItemSlots ?? []), action.index]
+        round.vetoedBy = [...(round.vetoedBy ?? []), actor.id]
+      } else {
+        nextBuild.remaining = build.remaining === null ? null : build.remaining - 1
+        nextBuild.used += 1
+      }
+      this.challenges.set(targetId, updated)
+      round.builds[targetId] = nextBuild
       if (requests) requests.add(action.requestId)
-      else this.rerollRequests.set(playerId, new Set([action.requestId]))
-      this.record(build.nickname + (nextBuild.remaining === 0 ? ' burned their last reroll.' : ' burned a reroll.'))
+      else this.rerollRequests.set(actor.id, new Set([action.requestId]))
+      this.record(veto
+        ? `${actor.nickname} vetoed ${build.nickname}’s ${challenge.items[action.index].name}. ${replacement.name} is locked in.`
+        : build.nickname + (nextBuild.remaining === 0 ? ' burned their last reroll.' : ' burned a reroll.'))
       return changed
     } catch {
       return reject('This slot could not be rerolled.')

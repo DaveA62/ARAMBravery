@@ -755,3 +755,8 @@
 .party-player__vacant {
   font: 500 .69rem/1.25 var(--mono);
 }
+
+.party-settings__toggles {
+  display: grid;
+  gap: 7px;
+}

@@ -57,21 +57,34 @@ export function validateItems(champion: Champion, selection: readonly Item[], mo
     canonicalItems.every((item, index) => canCombine(item, canonicalItems.slice(0, index)));
 }
 
-export function generateItems(champion: Champion, mode: Mode, random: () => number): Item[] {
-  const pool = shuffled(eligibleItems(champion, mode), random);
-
-  function findBuild(remaining: readonly Item[], chosen: readonly Item[]): Item[] | null {
-    if (chosen.length === ITEM_SLOT_COUNT) return [...chosen];
-    for (let index = 0; index <= remaining.length - (ITEM_SLOT_COUNT - chosen.length); index += 1) {
-      const candidate = remaining[index];
-      if (!canCombine(candidate, chosen)) continue;
-      const result = findBuild(remaining.slice(index + 1), [...chosen, candidate]);
-      if (result) return result;
-    }
-    return null;
+function findBuild(remaining: readonly Item[], chosen: readonly Item[], slots: number): Item[] | null {
+  if (chosen.length === slots) return [...chosen];
+  for (let index = 0; index <= remaining.length - (slots - chosen.length); index += 1) {
+    const candidate = remaining[index];
+    if (!canCombine(candidate, chosen)) continue;
+    const result = findBuild(remaining.slice(index + 1), [...chosen, candidate], slots);
+    if (result) return result;
   }
+  return null;
+}
 
-  const selection = findBuild(pool, []);
+export function compatibleGuideItems(champion: Champion, mode: Mode, guideItemIds: readonly string[]): Item[] {
+  const allowed = new Map(eligibleItems(champion, mode).map((item) => [item.id, item]));
+  const candidates = [...new Set(guideItemIds)].flatMap((id) => {
+    const item = allowed.get(id);
+    return item ? [item] : [];
+  });
+  for (let slots = Math.min(ITEM_SLOT_COUNT, candidates.length); slots > 0; slots -= 1) {
+    const subset = findBuild(candidates, [], slots);
+    if (subset) return subset;
+  }
+  return [];
+}
+
+export function generateItems(champion: Champion, mode: Mode, random: () => number, guideItemIds?: readonly string[]): Item[] {
+  const pool = shuffled(eligibleItems(champion, mode), random);
+  const preferred = guideItemIds?.length ? compatibleGuideItems(champion, mode, guideItemIds) : [];
+  const selection = findBuild(pool, preferred, ITEM_SLOT_COUNT) ?? findBuild(pool, [], ITEM_SLOT_COUNT);
   if (!selection) throw new Error(`The item pool cannot fill six legal slots for ${champion.name}.`);
   return selection;
 }

@@ -15,7 +15,7 @@ import type { useParty } from './network'
 import {
   MAX_PLAYERS, normalizeCode, normalizeNickname, partyInvite, validCode, validNickname,
 } from './protocol'
-import type { Allowance, PartyPlayer, PartySnapshot } from './protocol'
+import type { Allowance, PartyPlayer, PartyRules, PartySnapshot } from './protocol'
 import type { PartyLink } from './transport'
 import './lobby.css'
 
@@ -202,6 +202,12 @@ export function PartyLobby({ party, initialCode, play, onSolo }: Props) {
     setDialog(null)
   }
 
+  function updateRules(change: Partial<PartyRules>, sound: ArcadeSound = 'confirm') {
+    if (!snapshot || !isHost || !canEdit) return
+    party.send({ type: 'settings', rules: { ...snapshot.rules, ...change } })
+    play(sound)
+  }
+
   function selectChampion(championId?: string) {
     if (!canEdit) return
     party.send({ type: 'champion', championId })
@@ -314,16 +320,13 @@ export function PartyLobby({ party, initialCode, play, onSolo }: Props) {
                     <div className="party-panel__heading">
                       <div>
                         <h2 id="party-settings-title"><Settings2 size={20} aria-hidden="true" /> Party Rules</h2>
-                        <p>{isHost ? 'Set the mode and item rerolls for every player.' : 'The host sets the mode and item rerolls.'}</p>
+                        <p>{isHost ? 'Set the roll rules for every player.' : 'The host sets the roll rules.'}</p>
                       </div>
                     </div>
                     <div className="party-settings__fields">
                       <label className="party-field"><span>Randomness mode</span>
                         <select aria-label="Randomness mode" value={snapshot.rules.mode} disabled={!isHost || !canEdit}
-                          onChange={event => {
-                            party.send({ type: 'settings', rules: { ...snapshot.rules, mode: event.target.value as Mode } })
-                            play('mode')
-                          }}>
+                          onChange={event => updateRules({ mode: event.target.value as Mode }, 'mode')}>
                           <option value="little">A Little Bullshit</option>
                           <option value="straight">Straight Bullshit</option>
                         </select>
@@ -333,13 +336,31 @@ export function PartyLobby({ party, initialCode, play, onSolo }: Props) {
                           onChange={event => {
                             const value = event.target.value
                             const allowance = allowances.find(option => String(option ?? 'unlimited') === value)
-                            if (allowance === undefined) return
-                            party.send({ type: 'settings', rules: { ...snapshot.rules, allowance } })
-                            play('confirm')
+                            if (allowance !== undefined) updateRules({ allowance })
                           }}>
                           {allowances.map(option => <option key={option ?? 'unlimited'}
                             value={option ?? 'unlimited'}>{option ?? 'Unlimited'}</option>)}
                         </select>
+                      </label>
+                    </div>
+                    <div className="party-settings__toggles">
+                      <label className="rule-toggle">
+                        <input type="checkbox" aria-label="Curated Bullshit" aria-describedby="party-curated-note"
+                          checked={Boolean(snapshot.rules.curated)} disabled={!isHost || !canEdit}
+                          onChange={event => updateRules({ curated: event.target.checked }, 'mode')} />
+                        <span>
+                          <strong>Curated Bullshit</strong>
+                          <small id="party-curated-note">Use an off-meta MOBAFire build when one fits this mode.</small>
+                        </span>
+                      </label>
+                      <label className="rule-toggle rule-toggle--friendly-fire">
+                        <input type="checkbox" aria-label="Friendly Fire" aria-describedby="party-friendly-fire-note"
+                          checked={Boolean(snapshot.rules.friendlyFire)} disabled={!isHost || !canEdit}
+                          onChange={event => updateRules({ friendlyFire: event.target.checked })} />
+                        <span>
+                          <strong>Friendly Fire</strong>
+                          <small id="party-friendly-fire-note">Veto one teammate’s item per round. The free replacement locks that slot.</small>
+                        </span>
                       </label>
                     </div>
                   </section>

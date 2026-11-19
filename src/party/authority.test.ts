@@ -200,3 +200,85 @@ it('clears ready states when the host changes rules and locks nicknames during a
   authority.leave(teammate.playerId)
   expect(authority.snapshot().round!.builds[teammate.playerId].nickname).toBe('Guest')
 })
+
+describe('friendly fire', () => {
+  function hostileParty(friendlyFire = true) {
+    const party = setup()
+    const { authority, guest, host } = party
+    const teammate = guest('Teammate')
+    const observer = guest('Observer')
+    authority.dispatch(host, { type: 'settings', rules: { mode: 'straight', allowance: 0, friendlyFire } })
+    for (const id of [host, teammate.playerId, observer.playerId]) authority.dispatch(id, { type: 'ready', ready: true })
+    expect(authority.dispatch(host, { type: 'roll' })).toMatchObject({ ok: true })
+    const round = authority.snapshot().round!
+    const before = generateChallenge(round.builds[teammate.playerId].config)
+    const veto = {
+      type: 'veto', roundId: round.id, requestId: 'first-veto',
+      targetId: teammate.playerId, index: 1, itemId: before.items[1].id,
+    } as const
+    return { ...party, teammate, observer, round, before, veto }
+  }
+
+  it('forces one legal replacement, keeps personal rerolls, and locks the slot for the round', () => {
+    const { authority, host, teammate, observer, round, before, veto, advance, options } = hostileParty()
+    expect(authority.dispatch(host, veto)).toMatchObject({ ok: false })
+    advance(COUNTDOWN + ROLL_LOCK)
+    expect(authority.dispatch(host, veto)).toEqual({ ok: true, changed: true })
+    const next = authority.snapshot().round!
+    const replacement = next.builds[teammate.playerId]
+    const after = generateChallenge(replacement.config)
+    expect(validateItems(after.champion, after.items)).toBe(true)
+    expect(after.items[1].id).not.toBe(before.items[1].id)
+    expect(after.items.filter((_, index) => index !== 1)).toEqual(before.items.filter((_, index) => index !== 1))
+    expect(next.builds[host]).toEqual(round.builds[host])
+    expect(replacement).toMatchObject({ remaining: 0, used: 0, lockedItemSlots: [1], lastReroll: { vetoBy: 'Host' } })
+    expect(next.vetoedBy).toEqual([host])
+    expect(authority.snapshot().activity.at(-1)?.text).toContain('vetoed Teammate')
+    expect(authority.dispatch(host, veto)).toEqual({ ok: true, changed: false })
+    expect(authority.dispatch(teammate.playerId, { type: 'reroll', index: 1, roundId: round.id, requestId: 'self-reroll' }))
+      .toMatchObject({ ok: false, error: 'That slot is locked for this round.' })
+    expect(authority.dispatch(observer.playerId, { ...veto, requestId: 'other-player' })).toMatchObject({ ok: false, error: 'That slot is locked for this round.' })
+    expect(authority.dispatch(host, { ...veto, requestId: 'second-veto', index: 2, itemId: after.items[2].id }))
+      .toMatchObject({ ok: false, error: 'You have already used your veto this round.' })
+
+    const restored = PartyAuthority.resume(authority.checkpoint(), options)
+    expect(restored.snapshot().round).toEqual(next)
+    expect(restored.dispatch(host, { type: 'next', roundId: round.id })).toMatchObject({ ok: true })
+    restored.dispatch(host, { type: 'ready', ready: true })
+    restored.dispatch(host, { type: 'roll' })
+    expect(restored.snapshot().round?.vetoedBy).toBeUndefined()
+    expect(restored.snapshot().round?.builds[host].lockedItemSlots).toBeUndefined()
+    expect(restored.snapshot().rules.friendlyFire).toBe(true)
+  })
+
+  it('rejects invalid, stale, disabled, and self-targeted vetoes without using the allowance', () => {
+    const { authority, host, guest, veto, advance, round } = hostileParty()
+    advance(COUNTDOWN + ROLL_LOCK)
+    const late = guest('Late')
+    expect(authority.dispatch(late.playerId, veto)).toMatchObject({ ok: false })
+    expect(authority.dispatch(host, { ...veto, roundId: 'previous-round' })).toMatchObject({ ok: false })
+    expect(authority.dispatch(host, { ...veto, index: 6 })).toMatchObject({ ok: false })
+    expect(authority.dispatch(host, { ...veto, itemId: 'stale-item' })).toMatchObject({ ok: false })
+    expect(authority.dispatch(host, { ...veto, targetId: host })).toMatchObject({ ok: false })
+    expect(authority.snapshot().round).toEqual(round)
+
+    const harmless = hostileParty(false)
+    harmless.advance(COUNTDOWN + ROLL_LOCK)
+    expect(harmless.authority.dispatch(harmless.host, harmless.veto)).toMatchObject({ ok: false, error: 'Friendly Fire is off.' })
+  })
+})
+
+it('passes the optional MOBAFire source rule through either party build mode', () => {
+  for (const mode of ['little', 'straight'] as const) {
+    const { authority, host } = setup()
+    expect(authority.dispatch(host, { type: 'settings', rules: { mode, allowance: 2, curated: true } }))
+      .toEqual({ ok: true, changed: true })
+    authority.dispatch(host, { type: 'ready', ready: true })
+    expect(authority.dispatch(host, { type: 'roll' })).toMatchObject({ ok: true })
+    const snapshot = authority.snapshot()
+    expect(snapshot.round!.builds[host].config).toMatchObject({ mode, curated: true })
+    const challenge = generateChallenge(snapshot.round!.builds[host].config)
+    expect(challenge.curation).toMatchObject({ status: 'applied', source: { name: 'MOBAFire' } })
+    expect(parseHostMessage({ type: 'snapshot', now: 1, snapshot })).not.toBeNull()
+  }
+})

@@ -7,6 +7,7 @@ import {
   type ChallengeConfig,
   type RerollAction,
 } from './challenge';
+import { CURATION_VERSION } from './curation';
 
 const VERSION = `${DATA_VERSION}.${GENERATOR_VERSION}`;
 const LIBRARY_KEY = `aram-bravery.library.${VERSION}`;
@@ -37,7 +38,10 @@ function asConfig(value: ChallengeConfig | Challenge): ChallengeConfig {
 
 export function challengeKey(value: ChallengeConfig | Challenge): string {
   const config = asConfig(value);
-  return JSON.stringify([VERSION, config.seed, config.mode, config.championId ?? null, config.rerolls.map(encodeReroll).join('')]);
+  return JSON.stringify([
+    VERSION, config.seed, config.mode, config.championId ?? null, config.rerolls.map(encodeReroll).join(''),
+    ...(config.curated ? [config.curationVersion ?? CURATION_VERSION] : []),
+  ]);
 }
 
 export function challengeUrl(value: ChallengeConfig | Challenge, base: string | URL = globalThis.location.href): string {
@@ -49,6 +53,14 @@ export function challengeUrl(value: ChallengeConfig | Challenge, base: string | 
   url.searchParams.set('v', GENERATOR_VERSION);
   if (config.championId) url.searchParams.set('champion', config.championId);
   else url.searchParams.delete('champion');
+
+  if (config.curated) {
+    url.searchParams.set('curated', '1');
+    url.searchParams.set('guides', config.curationVersion ?? CURATION_VERSION);
+  } else {
+    url.searchParams.delete('curated');
+    url.searchParams.delete('guides');
+  }
 
   if (config.rerolls.length) url.searchParams.set('reels', config.rerolls.map(encodeReroll).join(''));
   else url.searchParams.delete('reels');
@@ -64,6 +76,10 @@ export function challengeFromUrl(source: string | URL | Location = globalThis.lo
     const query = url.searchParams;
     if (query.get('data') !== DATA_VERSION || query.get('v') !== GENERATOR_VERSION) return null;
 
+    const curated = query.get('curated');
+    const curationVersion = curated === '1' ? query.get('guides') : undefined;
+    if (curated !== null && (curated !== '1' || curationVersion !== CURATION_VERSION)) return null;
+
     const rerolls: RerollAction[] = [];
     for (const token of query.get('reels') ?? '') {
       const action = decodeReroll(token);
@@ -75,6 +91,7 @@ export function challengeFromUrl(source: string | URL | Location = globalThis.lo
       seed: query.get('seed'),
       mode: query.get('mode'),
       championId: query.get('champion') ?? undefined,
+      ...(curated === '1' ? { curated: true, curationVersion } : {}),
       rerolls,
     };
     return isChallengeInput(input) ? generateChallenge(input) : null;

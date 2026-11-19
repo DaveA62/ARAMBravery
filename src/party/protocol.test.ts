@@ -37,3 +37,11 @@ describe('party wire protocol', () => {
     expect(acceptSnapshot(updated, { ...updated, revision: 100, hostId: 'other' })).toBe(updated)
   })
 })
+
+it('accepts veto requests and rejects malformed targets or slots', () => {
+  const action = { type: 'veto', index: 2, roundId: 'round', requestId: 'request', targetId: 'player', itemId: '3124' } as const
+  expect(parseClientMessage({ type: 'action', id: 'req', action })).not.toBeNull()
+  expect(parseClientMessage({ type: 'action', id: 'req', action: { ...action, targetId: [] } })).toBeNull()
+  expect(parseClientMessage({ type: 'action', id: 'req', action: { ...action, index: 6 } })).toBeNull()
+  expect(parseClientMessage({ type: 'action', id: 'req', action: { ...action, itemId: '' } })).toBeNull()
+})

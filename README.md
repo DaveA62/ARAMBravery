@@ -18,6 +18,7 @@ The Vite preview command serves the production build with `npm run preview`. Git
 ## Play a challenge
 
 - Choose a random champion or select one from the mode's eligible roster. Pick **A Little Bullshit** to consider the champion’s meaningful scaling, or **Straight Bullshit** to roll from the full baseline shop.
+- Turn on **Curated Bullshit** alongside either build mode to roll from a versioned catalog of off-meta MOBAFire guides. Random champion rolls draw from champions with a qualifying guide. The loadout credits the guide and identifies its items. The generator can adapt a guide to the Mayhem item pool and labels a standard roll when your champion has no qualifying guide.
 - Buy the items in the displayed order. Change any item or spell with its individual reroll. The other slots stay fixed. Tap a skill level to track it.
 - Choose **By name** to enter the augments you see and rank them using your challenge’s decision sheet. Choose **By position** for a seeded card pick at levels 3, 7, 11, and 15. Count the offered cards from left to right.
 - Set **Cards per offer** to four for Maestro. In position mode, use **Add bonus pick** for each additional round your Headliner offers, including Pentakill’s two bonus picks.
@@ -28,6 +29,7 @@ The Vite preview command serves the production build with `npm run preview`. Git
 
 Open **Party Mayhem**, enter a nickname, and create a party. Share the six-character code or the invite link. Choose your champion and ready up. The host chooses the shared chaos mode and each player's item reroll allowance. A team roll assigns separate builds. **My Build** shows your results and rerolls. **The Whole Circus** shows everyone’s current builds. **Run It Back** returns the party to the lobby with the same settings and champion preferences.
 
+- Hosts can turn on **Friendly Fire**. Each player gets one veto per round in **The Whole Circus**. A veto rerolls one teammate’s item without spending their item rerolls and locks the replacement slot until the next round.
 - The host’s browser holds the authoritative roster, game rules, readiness, round seeds, and reroll ledger. Guests send requests over a WebRTC data channel. The host validates each request against the admitted player and current round, then broadcasts a numbered snapshot. Connections receive fresh snapshots when they rejoin. The protocol checks app and patch compatibility, and clients recreate the seed-based results locally using the same version.
 - Offline players have a 45-second seat reservation from disconnect detection. A new round includes connected, ready players. Joining during a round puts the player in the lobby for the next one. Online sessions can recover after refreshing the same tab. An explicit host exit ends the party and there’s no host migration. The host keeps up to eight recent rounds in its tab session.
 - Standard invites use PeerJS’s public signaling with STUN-only ICE. The public site is hosted at [davea62.github.io/ARAMBravery](https://davea62.github.io/ARAMBravery/). Restrictive networks may require a TURN relay, so a direct connection is not guaranteed. The project uses no relay or application backend.
