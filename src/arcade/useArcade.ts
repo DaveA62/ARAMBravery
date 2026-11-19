@@ -76,7 +76,8 @@ export function useArcade(preferences: AudioPreferences & { motion: MotionPrefer
 
     audio.unlock()
     const isFull = kind === 'full'
-    audio.play(events.length ? (isFull ? 'roll' : 'spin') : (isFull ? 'complete' : 'tap'), options.chaotic)
+    const soundOptions = { championRoles: options.championRoles, short: effectiveMotion === 'short' }
+    audio.play(events.length ? (isFull ? 'roll' : 'spin') : (isFull ? 'complete' : 'tap'), options.chaotic, soundOptions)
     setFrame(initial)
 
     if (!events.length) {
@@ -92,7 +93,7 @@ export function useArcade(preferences: AudioPreferences & { motion: MotionPrefer
       if (active.current !== roll) return
       const next = applyArcadeEvents(current, events, performance.now() - start, cursor)
       if (next.frame !== current) setFrame(next.frame)
-      if (next.sound) audio.play(next.sound, options.chaotic)
+      if (next.sound) audio.play(next.sound, options.chaotic, { ...soundOptions, lane: next.lane })
       current = next.frame
       cursor = next.cursor
 

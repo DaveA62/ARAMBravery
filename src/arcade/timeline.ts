@@ -3,7 +3,7 @@ import type { ArcadeSound } from './audio'
 export type MotionPreference = 'full' | 'short' | 'off'
 export type ArcadePhase = 'idle' | 'champion' | 'items' | 'spells' | 'skills' | 'augments' | 'complete'
 export type RollKind = 'full' | 'items' | { item: number } | { spell: number }
-export type RollOptions = { manualChampion?: boolean; chaotic?: boolean; skillCount?: number }
+export type RollOptions = { manualChampion?: boolean; chaotic?: boolean; skillCount?: number; championRoles?: readonly string[] }
 
 export type ReelTrack = {
   id: number
@@ -30,6 +30,7 @@ export type ArcadeEvent = {
   at: number
   update?: (frame: ArcadeFrame) => ArcadeFrame
   sound?: ArcadeSound
+  lane?: number
 }
 
 export function settledFrame(): ArcadeFrame {
@@ -54,8 +55,8 @@ export function planRoll(id: number, kind: RollKind, motion: MotionPreference, o
 
   const scale = motion === 'short' ? 0.39 : 1
   const time = (at: number) => Math.round(at * scale)
-  const event = (at: number, update?: ArcadeEvent['update'], sound?: ArcadeSound) =>
-    events.push({ at: time(at), update, sound })
+  const event = (at: number, update?: ArcadeEvent['update'], sound?: ArcadeSound, lane?: number) =>
+    events.push({ at: time(at), update, sound, lane })
 
   const track = (lane: number, duration: number, phase: ReelTrack['phase']): ReelTrack => ({
     id, lane, duration: time(duration), phase, chaotic: options.chaotic ?? false,
@@ -77,7 +78,7 @@ export function planRoll(id: number, kind: RollKind, motion: MotionPreference, o
 
       event(begins + duration, (frame) => ({
         ...frame, tracks: replaceTrack(frame.tracks, group, track(lane, duration, 'landed')),
-      }), group === 'items' ? 'stop' : 'spell')
+      }), group === 'items' ? 'stop' : 'spell', lane)
     }
     return begins + firstStop + (lanes.length - 1) * stopInterval
   }
@@ -94,7 +95,7 @@ export function planRoll(id: number, kind: RollKind, motion: MotionPreference, o
     } else {
       initial.phase = 'items'
       const lanes = kind === 'items' ? [0, 1, 2, 3, 4, 5] : [kind.item]
-      if (kind === 'items') event(370, undefined, 'spin')
+      if (kind === 'items') event(370, undefined, 'brake')
       finish(groupTracks('items', lanes, 0, kind === 'items' ? 670 : 620, 130) + 100)
     }
     return { initial, events: events.sort((a, b) => a.at - b.at) }
@@ -114,7 +115,7 @@ export function planRoll(id: number, kind: RollKind, motion: MotionPreference, o
   event(itemsStart, (frame) => ({ ...frame, phase: 'items' }), 'spin')
   if (motion === 'full') {
     event(itemsStart + 395, undefined, 'spin')
-    event(itemsStart + 838, undefined, 'spin')
+    event(itemsStart + 740, undefined, 'brake')
   }
   const itemsEnd = groupTracks('items', [0, 1, 2, 3, 4, 5], itemsStart, 810, 185)
 
@@ -140,10 +141,14 @@ export function applyArcadeEvents(frame: ArcadeFrame, events: ArcadeEvent[], ela
   let next = frame
   let cursor = from
   let sound: ArcadeSound | undefined
+  let lane: number | undefined
   while (cursor < events.length && events[cursor].at <= elapsed) {
     const event = events[cursor++]
     if (event.update) next = event.update(next)
-    if (event.sound && elapsed - event.at < 70) sound = event.sound
+    if (event.sound && elapsed - event.at < 70) {
+      sound = event.sound
+      lane = event.lane
+    }
   }
-  return { frame: next, cursor, sound }
+  return { frame: next, cursor, sound, lane }
 }

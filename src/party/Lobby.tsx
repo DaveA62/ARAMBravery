@@ -91,7 +91,7 @@ function Roster({ snapshot, ownId }: { snapshot: PartySnapshot; ownId: string | 
         {Array.from({ length: MAX_PLAYERS - players.length }, (_, index) => (
           <li className="party-player party-player--empty" key={index}>
             <span className="party-player__badge" aria-hidden="true"><UserRoundPlus size={18} /></span>
-            <span className="party-player__champion party-player__vacant">WAITING FOR VICTIM…</span>
+            <span className="party-player__champion party-player__vacant">Open slot</span>
           </li>
         ))}
       </ul>
@@ -304,8 +304,8 @@ export function PartyLobby({ party, initialCode, play, onSolo }: Props) {
                           play('confirm')
                         }}><Check size={17} aria-hidden="true" /> {ownPlayer?.ready ? 'Unready' : 'Ready up'}</button>
                       {isHost && <button type="button" className="party-btn party-btn--gold party-btn--roll"
-                        disabled={!canRoll} onClick={() => { party.send({ type: 'roll' }); play('tap') }}>
-                        <Clover size={22} aria-hidden="true" /> ROLL THE WHOLE DAMN TEAM
+                        disabled={!canRoll} onClick={() => { party.send({ type: 'roll' }); play('charge') }}>
+                        <Clover size={22} aria-hidden="true" /> Roll Party Builds
                       </button>}
                       <p className="party-muted">
                         {isHost
@@ -350,7 +350,7 @@ export function PartyLobby({ party, initialCode, play, onSolo }: Props) {
                           onChange={event => updateRules({ curated: event.target.checked }, 'mode')} />
                         <span>
                           <strong>Curated Bullshit</strong>
-                          <small id="party-curated-note">Use an off-meta MOBAFire build when one fits this mode.</small>
+                          <small id="party-curated-note">Each full item roll has a 50% chance to try a MOBAFire guide. A miss uses the usual item pool.</small>
                         </span>
                       </label>
                       <label className="rule-toggle rule-toggle--friendly-fire">

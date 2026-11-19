@@ -7,7 +7,7 @@ import {
   type ChallengeConfig,
   type RerollAction,
 } from './challenge';
-import { CURATION_VERSION } from './curation';
+import { CURATION_VERSION, LEGACY_CURATION_VERSION, isCurationVersion } from './curation';
 
 const VERSION = `${DATA_VERSION}.${GENERATOR_VERSION}`;
 const LIBRARY_KEY = `aram-bravery.library.${VERSION}`;
@@ -78,7 +78,7 @@ export function challengeFromUrl(source: string | URL | Location = globalThis.lo
 
     const curated = query.get('curated');
     const curationVersion = curated === '1' ? query.get('guides') : undefined;
-    if (curated !== null && (curated !== '1' || curationVersion !== CURATION_VERSION)) return null;
+    if (curated !== null && (curated !== '1' || !isCurationVersion(curationVersion))) return null;
 
     const rerolls: RerollAction[] = [];
     for (const token of query.get('reels') ?? '') {
@@ -140,7 +140,11 @@ function writeLocal(key: string, value: unknown): void {
 
 function configs(value: unknown): ChallengeConfig[] {
   if (!Array.isArray(value)) return [];
-  return value.filter(isChallengeInput).map((config) => ({ ...config, rerolls: [...(config.rerolls ?? [])] }));
+  return value.filter(isChallengeInput).flatMap((config) => {
+    const curationVersion = config.curated ? config.curationVersion ?? LEGACY_CURATION_VERSION : undefined;
+    if (curationVersion && !isCurationVersion(curationVersion)) return [];
+    return [{ ...config, ...(curationVersion ? { curationVersion } : {}), rerolls: [...(config.rerolls ?? [])] }];
+  });
 }
 
 export function loadLibrary(): ChallengeLibrary {

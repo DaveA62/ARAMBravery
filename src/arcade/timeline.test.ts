@@ -17,6 +17,8 @@ describe('challenge reveal timeline', () => {
       expect(tracks[slot]?.phase).toBe('landed')
     }
 
+    expect(applyArcadeEvents(initial, events, 1725)).toMatchObject({ sound: 'stop', lane: 0 })
+    expect(applyArcadeEvents(initial, events, 2650)).toMatchObject({ sound: 'stop', lane: 5 })
     const firstSpell = at(3095)
     expect(firstSpell.tracks.spells.map((track) => track?.phase)).toEqual(['landed', 'spinning'])
 

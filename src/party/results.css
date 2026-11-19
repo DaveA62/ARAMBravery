@@ -37,15 +37,15 @@
 .party-allowance strong{font:800 28px/1 var(--display)}
 .party-allowance small{display:inline-flex;align-items:center;gap:5px;margin-left:auto;color:#c6afe3}
 .party-results-note{display:flex;align-items:center;gap:7px;padding:12px 0;color:#c1b2cd;font-size:13px;line-height:1.45}
-.party-circus{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,305px),1fr));gap:12px}
-.party-circus-card{display:grid;gap:11px;padding:14px}
-.party-circus-heading,.party-circus-footer{display:flex;align-items:center;gap:10px;justify-content:space-between}
-.party-circus-heading>img,.party-circus-heading>.art-fallback{width:47px;height:47px;border:1px solid #926c6b;flex:none}
-.party-circus-heading>div{margin-right:auto;min-width:0}
-.party-circus-heading h2{display:flex;align-items:center;gap:4px;overflow-wrap:anywhere;font:800 27px/1 var(--display)}
-.party-circus-heading h2 svg{color:#ffd489}
-.party-circus-heading p{color:#c3a9d3;font-size:12px;margin-top:3px}
-.party-circus-allowance{display:flex;align-items:center;gap:5px;color:#ffd29a;font:700 21px/1 var(--display)}
+.party-build{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,305px),1fr));gap:12px}
+.party-build-card{display:grid;gap:11px;padding:14px}
+.party-build-heading,.party-build-footer{display:flex;align-items:center;gap:10px;justify-content:space-between}
+.party-build-heading>img,.party-build-heading>.art-fallback{width:47px;height:47px;border:1px solid #926c6b;flex:none}
+.party-build-heading>div{margin-right:auto;min-width:0}
+.party-build-heading h2{display:flex;align-items:center;gap:4px;overflow-wrap:anywhere;font:800 27px/1 var(--display)}
+.party-build-heading h2 svg{color:#ffd489}
+.party-build-heading p{color:#c3a9d3;font-size:12px;margin-top:3px}
+.party-build-allowance{display:flex;align-items:center;gap:5px;color:#ffd29a;font:700 21px/1 var(--display)}
 .party-team-items{list-style:none;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px;padding:0;margin:0}
 .party-team-items li{display:flex;flex-direction:column;gap:4px;min-width:0}
 .party-team-item-art{position:relative;aspect-ratio:1;min-width:0;border:1px solid #655077;background:#181523}

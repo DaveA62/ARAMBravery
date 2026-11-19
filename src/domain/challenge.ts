@@ -1,6 +1,9 @@
 import { champions, DATA_VERSION, spells, type Champion, type Item, type Spell } from '../data';
 import { rankAugments, type AugmentDecision } from './augmentDecisions';
-import { CURATION_VERSION, curatedChampionPool, describeCuration, findGuide, selectGuide, type Curation } from './curation';
+import {
+  CURATION_VERSION, LEGACY_CURATION_VERSION, curatedChampionPool, describeCuration, describeStandardCuration,
+  findGuide, isCurationVersion, rollsForCuration, selectGuide, type Curation,
+} from './curation';
 import { canCombine, eligibleItems, generateItems, type Mode } from './itemLegality';
 import { byId, pick, seededRandom, shuffled } from './random';
 import { generateSkills, type SkillStep } from './skills';
@@ -80,7 +83,7 @@ export function isChallengeInput(value: unknown): value is ChallengeInput {
     (value.mode === 'little' || value.mode === 'straight') &&
     (!('curated' in value) || value.curated === undefined || typeof value.curated === 'boolean') &&
     (!('curationVersion' in value) || value.curationVersion === undefined ||
-      ('curated' in value && value.curated === true && value.curationVersion === CURATION_VERSION)) &&
+      ('curated' in value && value.curated === true && isCurationVersion(value.curationVersion))) &&
     (!('championId' in value) || value.championId === undefined ||
       sortedChampions.some(({ id }) => id === value.championId)) &&
     (!('rerolls' in value) || value.rerolls === undefined ||
@@ -104,6 +107,7 @@ function rerollEquipment(
   challenge: Pick<Challenge, 'champion' | 'config'> & Equipment,
   action: RerollAction,
   count: number,
+  loadoutRoll: number,
 ): Equipment {
   const { champion, config } = challenge;
   const random = challengeRandom(config.seed, `${rerollCategory(action)}:${count}`);
@@ -113,7 +117,8 @@ function rerollEquipment(
   };
 
   if (action.type === 'items') {
-    const guide = config.curated ? selectGuide(champion, config.mode, config.seed, count, challenge.curation?.guideId) : undefined;
+    const attempt = rollsForCuration(config.seed, config.curationVersion, loadoutRoll);
+    const guide = attempt ? selectGuide(champion, config.mode, config.seed, count, challenge.curation?.guideId) : undefined;
     let items = generateItems(champion, config.mode, random, guide?.guide.itemIds);
     if (guide && items.every(({ id }, index) => id === challenge.items[index].id)) {
       // A single matching source cannot provide a second full loadout. Adapt one
@@ -121,7 +126,9 @@ function rerollEquipment(
       const index = Math.floor(random() * items.length);
       items = rerollItem(champion, config.mode, items, index, random);
     }
-    return { ...equipment, items, ...(config.curated ? { curation: describeCuration(champion, config.mode, guide, items) } : {}) };
+    if (!config.curated) return { ...equipment, items };
+    const curation = attempt ? describeCuration(champion, config.mode, guide, items) : describeStandardCuration();
+    return { ...equipment, items, curation };
   }
   if (action.type === 'spells') {
     return { ...equipment, spells: generateSpells(champion, random) };
@@ -130,9 +137,11 @@ function rerollEquipment(
   // The current and occupied slots are excluded, so a reroll visibly changes
   // that slot whenever any alternative purchase or spell is legal.
   if (action.type === 'item') {
-    const guide = config.curated ? findGuide(champion, config.mode, challenge.curation?.guideId) : undefined;
+    const followsGuide = challenge.curation?.status === 'applied' || config.curationVersion === LEGACY_CURATION_VERSION;
+    const guide = followsGuide ? findGuide(champion, config.mode, challenge.curation?.guideId) : undefined;
     const items = rerollItem(champion, config.mode, equipment.items, action.index, random, guide?.guide.itemIds);
-    return { ...equipment, items, ...(config.curated ? { curation: describeCuration(champion, config.mode, guide, items) } : {}) };
+    if (!guide) return { ...equipment, items };
+    return { ...equipment, items, curation: describeCuration(champion, config.mode, guide, items) };
   }
 
   const candidates = eligibleSpells(champion)
@@ -148,24 +157,27 @@ export function generateChallenge(input: ChallengeInput): Challenge {
     seed: input.seed.trim(),
     mode: input.mode,
     ...(input.championId ? { championId: input.championId } : {}),
-    ...(input.curated ? { curated: true, curationVersion: CURATION_VERSION } : {}),
+    ...(input.curated ? { curated: true, curationVersion: input.curationVersion ?? CURATION_VERSION } : {}),
     rerolls: [...(input.rerolls ?? [])],
   };
+  const attempt = rollsForCuration(config.seed, config.curationVersion, 0);
   const selectedChampion = sortedChampions.find(({ id }) => id === config.championId);
-  const sourceRoster = config.curated && !selectedChampion ? curatedChampionPool(sortedChampions, config.mode) : [];
+  const sourceRoster = attempt && !selectedChampion ? curatedChampionPool(sortedChampions, config.mode) : [];
   const champion = selectedChampion ?? pick(sourceRoster.length ? sourceRoster : sortedChampions, challengeRandom(config.seed, 'champion'));
-  const guide = config.curated ? selectGuide(champion, config.mode, config.seed, 0) : undefined;
+  const guide = attempt ? selectGuide(champion, config.mode, config.seed, 0) : undefined;
   const items = generateItems(champion, config.mode, challengeRandom(config.seed, 'items:0'), guide?.guide.itemIds);
   let equipment: Equipment = {
     items,
     spells: generateSpells(champion, challengeRandom(config.seed, 'spells:0')),
-    ...(config.curated ? { curation: describeCuration(champion, config.mode, guide, items) } : {}),
+    ...(config.curated ? { curation: attempt ? describeCuration(champion, config.mode, guide, items) : describeStandardCuration() } : {}),
   };
 
   const counts: RerollCounts = { items: 0, spells: 0 };
+  let loadoutRoll = 0;
   for (const action of config.rerolls) {
     const category = rerollCategory(action);
-    equipment = rerollEquipment({ champion, config, ...equipment }, action, ++counts[category]);
+    if (action.type === 'items') loadoutRoll += 1;
+    equipment = rerollEquipment({ champion, config, ...equipment }, action, ++counts[category], loadoutRoll);
   }
 
   return {
@@ -181,9 +193,10 @@ export function rerollChallenge(challenge: Challenge, action: RerollAction): Cha
   if (!isRerollAction(action)) throw new Error('Invalid reroll action.');
   const category = rerollCategory(action);
   const count = challenge.config.rerolls.filter((entry) => rerollCategory(entry) === category).length + 1;
+  const loadoutRoll = action.type === 'items' ? challenge.config.rerolls.filter((entry) => entry.type === 'items').length + 1 : 0;
   return {
     ...challenge,
-    ...rerollEquipment(challenge, action, count),
+    ...rerollEquipment(challenge, action, count, loadoutRoll),
     config: { ...challenge.config, rerolls: [...challenge.config.rerolls, action] },
   };
 }

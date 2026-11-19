@@ -7,7 +7,7 @@ The app pins League patch **26.23**, Data Dragon **16.23.1**, and CommunityDrago
 | Champions | 173 | Queue 2400's `viableChampionRoster`, joined to Data Dragon's champion IDs. The game's unlocked champions, free rotation, and actual match offers further limit each account's choices. |
 | Shop items | 115 | The exact `KIWI` Map12 item lists joined to game item data, including purchasable Legendary items and complete shop boots. |
 | Starting spells | 8 | Both Data Dragon and the game client's `KIWI` mode flags. Riot confirms Exhaust is disabled. |
-| Augment catalog | 241 | The `KIWI` client catalog joined to gameplay records by augment ID, with two explicitly disabled records excluded. Nine client-listed entries have disputed live availability and are marked in the app. |
+| Augment catalog | 241 | The `KIWI` client catalog joined to gameplay records by augment ID, with two explicitly disabled records excluded. Nine client-listed entries have disputed live availability and are flagged in the dataset. |
 
 ## Shop rules
 
@@ -19,9 +19,9 @@ The app pins League patch **26.23**, Data Dragon **16.23.1**, and CommunityDrago
 
 ## Augment availability
 
-Every row in the reference receives a seeded priority and instruction. The pinned `KIWI` client catalog and gameplay BIN both contain 243 unique IDs. Two have `Enabled: false` in that BIN and are excluded. Nine others are present in the BIN and catalog, while the community reference lists them as disabled. They remain searchable with an unconfirmed availability label so the picker can rank an actual offer if a server update enables it. Live status coverage is incomplete. The app ranks the three names you report and does not simulate Riot's conditional or account-specific offers.
+The pinned `KIWI` client catalog and gameplay BIN both contain 243 unique IDs. Two have `Enabled: false` in that BIN and are excluded. Nine others are present in the BIN and catalog, while the community reference lists them as disabled. They are marked as unconfirmed in the data. The Augment Picker gives a seeded card position based on the number of offers.
 
-The game client provides a shared Pentakill empowerment record with a blank label. The reference displays it as *Pentakill Ability Empowerment*, alongside the individual Q, W, E, and R variants.
+The game client provides a shared Pentakill empowerment record with a blank label. The dataset records it as *Pentakill Ability Empowerment*, alongside the individual Q, W, E, and R variants.
 
 ## Patch import
 
@@ -53,6 +53,6 @@ Pass the new full Data Dragon version for a League patch refresh. The importer d
 
 `curated.ts` pins the public MOBAFire guides used by the optional Curated Bullshit setting. Each entry credits the guide's author and links to the original. Entries tagged `sourceMode: 'aram'` came from standard ARAM guides. Other entries came from Summoner's Rift guides. Each is adapted to the ARAM: Mayhem shop.
 
-The catalog covers a selection of champions and off-meta builds. The generator rolls normally when a champion has no compatible curated guide. In A Little Bullshit, champion scaling and item eligibility can further limit which guide items appear.
+The catalog covers a selection of champions and off-meta builds. Each full item roll makes a seeded 50% draw when curation is on. A miss uses the selected mode’s regular item pool and preserves the full roster when the champion is random. A hit without a compatible guide also uses the regular item pool. In A Little Bullshit, champion scaling and item eligibility can further limit which guide items appear.
 
 When refreshing an entry, verify the author and title on MOBAFire and check the guide's example or purchase order against the current Mayhem item pool. Keep the order of usable recommendations. Use the current purchasable form of a stacking item and choose an alternative from the same guide when an item must be replaced. Drop a build if the guide cannot support a six-item legal variation. Preserve existing entry IDs, bump `CURATION_VERSION` when the data changes, and run `npm test` and `npm run build`.

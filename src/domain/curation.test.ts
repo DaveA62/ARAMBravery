@@ -5,11 +5,12 @@ import {
   CURATION_VERSION, challengeFromUrl, challengeKey, challengeSummary, challengeUrl, generateChallenge,
   loadLibrary, rememberChallenge, rerollChallenge, toggleFavorite, validateItems, type Mode,
 } from './index';
-import { curatedChampionPool } from './curation';
+import { LEGACY_CURATION_VERSION, curatedChampionPool } from './curation';
 import { compatibleGuideItems } from './itemLegality';
 
 const base = 'https://example.github.io/ARAMBravery/';
 const seed = 'PUBLISHED-MAYHEM';
+const winningSeed = 'PUBLISHED-MAYHEM-0';
 const modes: Mode[] = ['little', 'straight'];
 
 afterEach(() => vi.unstubAllGlobals());
@@ -41,24 +42,38 @@ describe('optional MOBAFire curation', () => {
     expect(challengeFromUrl(oldUrl)).toEqual(build);
   });
 
-  it('selects covered random champions in both modes and adapts only with a majority of guide items', () => {
+  it('makes deterministic guide and standard draws in both modes, using the full roster on misses', () => {
     expect(curatedGuides.length).toBeGreaterThan(1);
     for (const mode of modes) {
       const roster = curatedChampionPool(champions, mode);
       expect(roster.length).toBeGreaterThan(0);
-      for (let index = 0; index < 25; index += 1) {
+      let curated = 0;
+      let uncoveredStandard = 0;
+      for (let index = 0; index < 50; index += 1) {
         const build = generateChallenge({ seed: `${seed}-${index}`, mode, curated: true });
-        expect(roster).toContain(build.champion);
-        expect(build.curation?.status).toBe('applied');
-        expect(build.curation?.itemIds.length).toBeGreaterThanOrEqual(4);
+        if (build.curation?.status === 'applied') {
+          curated += 1;
+          expect(roster).toContain(build.champion);
+          expect(build.curation.itemIds.length).toBeGreaterThanOrEqual(4);
+        } else {
+          expect(build.curation).toMatchObject({ status: 'standard', itemIds: [] });
+          expect(build.curation?.source).toBeUndefined();
+          if (!roster.includes(build.champion)) uncoveredStandard += 1;
+          const ordinary = generateChallenge({ seed: build.config.seed, mode });
+          expect(build.champion).toBe(ordinary.champion);
+          expect(build.items).toEqual(ordinary.items);
+        }
         expect(validateItems(build.champion, build.items, mode)).toBe(true);
         expect(generateChallenge(build.config)).toEqual(build);
       }
+      expect(curated).toBeGreaterThan(10);
+      expect(curated).toBeLessThan(40);
+      expect(uncoveredStandard).toBeGreaterThan(0);
     }
   });
 
   it('copies complete legal source purchases in order and attributes the linked guide', () => {
-    const build = generateChallenge({ seed, mode: 'little', championId: 'Nautilus', curated: true });
+    const build = generateChallenge({ seed: winningSeed, mode: 'little', championId: 'Nautilus', curated: true });
     const info = build.curation;
     expect(info).toMatchObject({ status: 'applied', adapted: false, source: { name: 'MOBAFire', author: 'LBDB' } });
     const guide = curatedGuides.find(({ id }) => id === info?.guideId)!;
@@ -69,7 +84,7 @@ describe('optional MOBAFire curation', () => {
 
   it('keeps an uncovered manual champion and explicitly falls back without false attribution', () => {
     const uncovered = champions.find((champion) => !curatedGuides.some((guide) => guide.championId === champion.id))!;
-    const config = { seed, mode: 'little', championId: uncovered.id } as const;
+    const config = { seed: winningSeed, mode: 'little', championId: uncovered.id } as const;
     const build = generateChallenge({ ...config, curated: true });
     const ordinary = generateChallenge(config);
     expect(build.champion).toBe(ordinary.champion);
@@ -86,7 +101,7 @@ describe('optional MOBAFire curation', () => {
   });
 
   it('adapts personal rerolls, keeps other slots fixed, and can reroll a one-guide loadout', () => {
-    const build = generateChallenge({ seed, mode: 'little', championId: 'Karma', curated: true });
+    const build = generateChallenge({ seed: winningSeed, mode: 'little', championId: 'Karma', curated: true });
     const item = rerollChallenge(build, { type: 'item', index: 1 });
     expect(item.items[1].id).not.toEqual(build.items[1].id);
     expect(item.items.filter((_, index) => index !== 1)).toEqual(build.items.filter((_, index) => index !== 1));
@@ -99,6 +114,44 @@ describe('optional MOBAFire curation', () => {
     expect(validateItems(build.champion, all.items, build.config.mode)).toBe(true);
     expect(generateChallenge(item.config)).toEqual(item);
     expect(generateChallenge(all.config)).toEqual(all);
+  });
+
+  it('leaves standard slots ordinary and makes fresh full-item draws without changing the champion', () => {
+    const config = { seed, mode: 'little', championId: 'Nautilus' } as const;
+    const standard = generateChallenge({ ...config, curated: true });
+    expect(standard.curation?.status).toBe('standard');
+    const action = { type: 'item', index: 2 } as const;
+    const item = rerollChallenge(standard, action);
+    expect(item.curation).toBe(standard.curation);
+    expect(item.items).toEqual(rerollChallenge(generateChallenge(config), action).items);
+
+    const first = rerollChallenge(standard, { type: 'items' });
+    const fromItem = rerollChallenge(item, { type: 'items' });
+    expect(first.curation?.status).toBe('applied');
+    expect(fromItem.curation?.status).toBe('applied');
+    expect(first.champion).toBe(standard.champion);
+    expect(first.spells).toBe(standard.spells);
+    expect(first.augments).toBe(standard.augments);
+    const second = rerollChallenge(first, { type: 'items' });
+    expect(second.curation).toMatchObject({ status: 'standard', itemIds: [] });
+    expect(generateChallenge(second.config)).toEqual(second);
+    expect(generateChallenge(fromItem.config)).toEqual(fromItem);
+  });
+
+  it('replays published guaranteed-guide links and saved configs on their original behavior', () => {
+    const config = { seed, mode: 'little', championId: 'Nautilus', curated: true, rerolls: [] } as const;
+    const legacy = generateChallenge({ ...config, curationVersion: LEGACY_CURATION_VERSION });
+    const publishedUrl = challengeUrl(legacy, base);
+    expect(new URL(publishedUrl).searchParams.get('guides')).toBe('mobafire-26.23-1');
+    expect(challengeFromUrl(publishedUrl)).toEqual(legacy);
+    expect(legacy.items.map(({ id }) => id)).toEqual(['3020', '3100', '4628', '3089', '3135', '3115']);
+    const current = generateChallenge(config);
+    expect(current.curation?.status).toBe('standard');
+    expect(challengeKey(current)).not.toBe(challengeKey(legacy));
+
+    const storage = JSON.stringify({ favorites: [legacy.config, config] });
+    vi.stubGlobal('localStorage', { getItem: () => storage });
+    expect(loadLibrary().favorites.map(generateChallenge)).toEqual([legacy, legacy]);
   });
 
   it('round-trips the curated dataset revision and maintains separate saved identities', () => {

@@ -15,6 +15,7 @@ type ReelProps = {
   variant?: 'item' | 'champion' | 'spell'
   className?: string
   decorative?: boolean
+  vetoed?: boolean
 }
 
 type ReelStyle = CSSProperties & {
@@ -50,7 +51,7 @@ function makeStrip(face: ReelFace, pool: readonly ReelFace[], track: ReelTrack) 
   return [...strip, face]
 }
 
-export function Reel({ face, pool = [], track, variant = 'item', className, decorative = false }: ReelProps) {
+export function Reel({ face, pool = [], track, variant = 'item', className, decorative = false, vetoed = false }: ReelProps) {
   const state = track?.phase ?? 'idle'
   const spinning = track?.phase === 'spinning'
   const strip = spinning ? makeStrip(face, pool, track) : undefined
@@ -65,6 +66,7 @@ export function Reel({ face, pool = [], track, variant = 'item', className, deco
       className={['arcade-reel', `arcade-reel--${variant}`, className].filter(Boolean).join(' ')}
       data-reel-state={state}
       data-chaotic={track?.chaotic || undefined}
+      data-vetoed={vetoed || undefined}
       role={!decorative && label ? 'img' : undefined}
       aria-label={!decorative ? label : undefined}
       aria-hidden={decorative || !label || undefined}
@@ -83,7 +85,13 @@ export function Reel({ face, pool = [], track, variant = 'item', className, deco
       {(state === 'idle' || state === 'landed') && (
         <span className="arcade-reel__result" key={`${state}-${track?.id ?? 0}-${face.id}`}>
           <FaceArt key={face.image ?? face.id} face={face} />
-          {state === 'landed' && <span className="arcade-reel__flare" />}
+          {state === 'landed' && <>
+            <span className="arcade-reel__flare" />
+            <span className="arcade-reel__shock" />
+            <span className="arcade-reel__sparks" aria-hidden="true">
+              <i /><i /><i /><i /><i /><i />
+            </span>
+          </>}
         </span>
       )}
       {spinning && <span className="arcade-reel__shutter" />}

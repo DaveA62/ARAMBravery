@@ -71,7 +71,6 @@ function SkillCard({ challenge, shown, active, onLevel }: {
 type Props = {
   challenge: Challenge
   arcade: ReturnType<typeof useArcade>
-  reducedMotion: boolean
   compact: boolean
   showHeading?: boolean
   headingActions?: ReactNode
@@ -82,7 +81,7 @@ type Props = {
   lockedItemSlots?: readonly number[]
 }
 
-export function Loadout({ challenge, arcade, reducedMotion, compact, showHeading = true, headingActions, onItemReroll, onSpellReroll, onRerollAll, itemLocked, lockedItemSlots }: Props) {
+export function Loadout({ challenge, arcade, compact, showHeading = true, headingActions, onItemReroll, onSpellReroll, onRerollAll, itemLocked, lockedItemSlots }: Props) {
   const [skillLevel, setSkillLevel] = useState(0)
   useEffect(() => { setSkillLevel(0) }, [challenge.config.seed])
   const curation = challenge.curation
@@ -116,7 +115,7 @@ export function Loadout({ challenge, arcade, reducedMotion, compact, showHeading
                 return (
                   <div className="item-cell" key={i} data-slot-locked={slotLocked && !hidden || undefined}>
                     <div className="item-window" tabIndex={hidden ? undefined : 0} aria-label={hidden ? 'Rolling item ' + (i + 1) : itemLabel}>
-                      <Reel face={{ id: item.id, name: item.name, image: item.icon }} pool={itemPool} track={track} variant="item" />
+                      <Reel face={{ id: item.id, name: item.name, image: item.icon }} pool={itemPool} track={track} variant="item" vetoed={slotLocked} />
                       <span className="slot-number">{String(i + 1).padStart(2, '0')}</span>
                       {!hidden && (guideItem || slotLocked) && (
                         <div className="item-markers" aria-hidden="true">
@@ -147,7 +146,7 @@ export function Loadout({ challenge, arcade, reducedMotion, compact, showHeading
               <div className="item-provenance" data-status={curation.status}>
                 <BookOpen size={17} aria-hidden="true" />
                 <div>
-                  <strong>Curated Bullshit</strong>
+                  <strong>{curation.status === 'applied' ? 'Curated Bullshit' : 'Standard Build'}</strong>
                   {curation.status === 'applied' && curation.source ? (
                     <p>
                       <a href={curation.source.url} target="_blank" rel="noopener noreferrer">
@@ -189,8 +188,8 @@ export function Loadout({ challenge, arcade, reducedMotion, compact, showHeading
         </div>
       </section>
       <div id="augment-picker" className="augment-anchor">
-        <AugmentTools challenge={arcade.showAugments ? challenge : null} reducedMotion={reducedMotion} compact={compact}
-          playSound={event => arcade.play(event === 'augmentReroll' ? 'warning' : event === 'augmentFlip' ? 'tap' : 'confirm')} />
+        <AugmentTools key={challenge.config.seed} seed={arcade.showAugments ? challenge.config.seed : undefined}
+          compact={compact} onChoose={() => arcade.play('confirm')} />
       </div>
     </>
   )

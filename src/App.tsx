@@ -10,6 +10,7 @@ import {
   rerollChallenge, toggleFavorite, type Challenge, type Mode, type RerollAction, type Preferences,
 } from './domain'
 import { preloadArcade, Reel, useArcade } from './arcade'
+import { StageAtmosphere, StageProgress } from './arcade/StageEffects'
 import { championFace, championPool, championSplash, Loadout, preloadChallenge, reelImages } from './Loadout'
 import { Art, ChampionPicker, copyText, Modal, useReducedMotion } from './ui'
 import { PartyLobby } from './party/Lobby'
@@ -129,7 +130,7 @@ export default function App() {
       setLastChampion(displayedChampion)
       preloadChallenge(next)
       arcade.run('full', () => commit(next), {
-        chaotic, manualChampion: Boolean(selected), skillCount: next.skills.length,
+        chaotic, manualChampion: Boolean(selected), skillCount: next.skills.length, championRoles: next.champion.roles,
       })
     } catch (error) {
       setToast(error instanceof Error ? error.message : 'The machine could not generate a legal build.')
@@ -221,6 +222,8 @@ export default function App() {
               </motion.div>
             </AnimatePresence>
             <div className="hero-shading" /><div className="hero-gridlines" />
+            <StageAtmosphere phase={arcade.phase} championImpact={championTrack?.phase === 'landed' ? championTrack.id : undefined}
+              reducedMotion={motionSetting === 'off'} />
             <div className="hero-orbit hero-orbit--outer" /><div className="hero-orbit hero-orbit--inner" />
             <div className="sparkfield">{sparks.map((spark, i) => <i key={i} style={{ left: spark.left + '%', top: spark.top + '%', animationDelay: spark.delay + 's', width: spark.size, height: spark.size }} />)}</div>
           </div>
@@ -264,7 +267,7 @@ export default function App() {
                       }} />
                     <span>
                       <strong>Curated Bullshit</strong>
-                      <small id="solo-curated-note">Use an off-meta MOBAFire build when one fits this mode.</small>
+                      <small id="solo-curated-note">Each full item roll has a 50% chance to try a MOBAFire guide. A miss uses the usual item pool.</small>
                     </span>
                   </label>
                 </div>
@@ -277,6 +280,7 @@ export default function App() {
                     <span><i />{stages[arcade.phase]}</span>
                     {arcade.busy && <button type="button" onClick={arcade.skip}>Skip animation</button>}
                   </div>
+                  <StageProgress phase={arcade.phase} fullRoll={!arcade.complete} />
                 </div>
               </>}
               {compact && <div className="compact-champion">
@@ -299,7 +303,7 @@ export default function App() {
         </section>
 
         <div className="shell gameplay">
-          <Loadout challenge={challenge} arcade={arcade} compact={compact} reducedMotion={motionSetting === 'off'}
+          <Loadout challenge={challenge} arcade={arcade} compact={compact}
             onItemReroll={index => reroll({ type: 'item', index })}
             onSpellReroll={index => reroll({ type: 'spell', index })}
             onRerollAll={() => reroll({ type: 'items' })}

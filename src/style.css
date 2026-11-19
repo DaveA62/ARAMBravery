@@ -227,14 +227,11 @@ svg{flex-shrink:0}
 .library-row>span:last-child{font-size:11px;color:#f3c987}
 .toast{position:fixed;right:20px;bottom:20px;z-index:25;display:flex;align-items:center;gap:9px;max-width:calc(100vw - 40px);padding:11px 15px;border:1px solid #92764f;background:#211b2a;color:#f5d293;border-radius:4px;box-shadow:0 5px 25px #0008;font-size:13px;opacity:0;pointer-events:none;transform:translateY(10px);transition:opacity .23s,transform .23s}
 .toast-visible{opacity:1;transform:translateY(0)}
-.completion-flash{position:fixed;z-index:20;inset:0;pointer-events:none;opacity:0;background:radial-gradient(ellipse at 55% 35%,#fff4c71a,transparent 42%,#f9bf6854)}
+.completion-flash{position:fixed;z-index:20;inset:0;pointer-events:none;opacity:0;background:radial-gradient(ellipse at 53% 45%,transparent 55%,#f5ba5740 91%),linear-gradient(180deg,#e5af5a2c,transparent 28%,transparent 75%,#efbf5233)}
 [data-phase=complete] .completion-flash{animation:finish-flare .75s ease-out both}
-[data-phase=champion] .hero::after,[data-phase=items] .hero::after,[data-phase=augments] .hero::after{content:"";position:absolute;pointer-events:none;inset:0;background:linear-gradient(120deg,transparent 30%,rgb(var(--accent-rgb),.14),transparent 67%);animation:hero-pulse .85s ease-out both}
-[data-phase=augments] .hero::after{background:radial-gradient(ellipse at 78% 45%,#c57eff64,transparent 67%)}
 .chaotic[data-phase=items] .hero-gridlines{animation:distort .6s ease-out}
 @keyframes distort{10%,38%{transform:translateX(3px);opacity:.9}25%,50%{transform:translateX(-4px);opacity:.15}}
-@keyframes hero-pulse{from{opacity:.95;transform:translateX(-10%)}to{opacity:0;transform:translateX(20%)}}
-@keyframes finish-flare{0%,26%{opacity:.85}100%{opacity:0}}
+@keyframes finish-flare{0%{opacity:.75}100%{opacity:0}}
 .no-motion *,.no-motion *::after,.no-motion *::before{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}
 .compact .hero,.compact .hero-inner{min-height:0}
 .compact .hero-inner{padding:15px 0}

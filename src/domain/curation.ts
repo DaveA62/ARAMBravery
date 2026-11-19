@@ -1,9 +1,12 @@
 import type { Champion, Item } from '../data';
-import { curatedGuides, CURATION_VERSION } from '../data/curated';
+import { curatedGuides, CURATION_VERSION as snapshotVersion } from '../data/curated';
 import { compatibleGuideItems, type Mode } from './itemLegality';
 import { pick, seededRandom } from './random';
 
-export { CURATION_VERSION };
+const GUIDE_SNAPSHOT_VERSION: string = snapshotVersion;
+export const LEGACY_CURATION_VERSION = 'mobafire-26.23-1';
+export const CURATION_VERSION = `${GUIDE_SNAPSHOT_VERSION}-chance1`;
+export const CURATED_CHANCE = 0.5;
 const MIN_GUIDE_ITEMS = 4;
 
 interface GuideRecord {
@@ -22,7 +25,7 @@ interface GuidePlan {
 }
 
 export interface Curation {
-  status: 'applied' | 'fallback';
+  status: 'applied' | 'fallback' | 'standard';
   itemIds: string[];
   guideId?: string;
   reason?: string;
@@ -38,6 +41,16 @@ for (const guide of curatedGuides) {
 }
 
 const plansByMode: Record<Mode, Map<string, GuidePlan[]>> = { little: new Map(), straight: new Map() };
+
+export function isCurationVersion(value: unknown): value is string {
+  return value === CURATION_VERSION || (GUIDE_SNAPSHOT_VERSION === LEGACY_CURATION_VERSION && value === LEGACY_CURATION_VERSION);
+}
+
+export function rollsForCuration(seed: string, version: string | undefined, roll: number): boolean {
+  if (version === LEGACY_CURATION_VERSION) return true;
+  if (version !== CURATION_VERSION) return false;
+  return seededRandom(JSON.stringify(['curation-chance', version, seed, roll]))() < CURATED_CHANCE;
+}
 
 function guidePlans(champion: Champion, mode: Mode): GuidePlan[] {
   const cached = plansByMode[mode].get(champion.id);
@@ -61,12 +74,16 @@ export function selectGuide(champion: Champion, mode: Mode, seed: string, roll: 
   const alternatives = available.filter(({ guide }) => guide.id !== previousGuideId);
   const eligible = alternatives.length ? alternatives : available;
   const best = eligible.filter(({ choices }) => choices.length === eligible[0].choices.length);
-  const random = seededRandom(JSON.stringify(['moba-guide', CURATION_VERSION, seed, champion.id, mode, roll]));
+  const random = seededRandom(JSON.stringify(['moba-guide', GUIDE_SNAPSHOT_VERSION, seed, champion.id, mode, roll]));
   return pick(best, random);
 }
 
 export function findGuide(champion: Champion, mode: Mode, id?: string): GuidePlan | undefined {
   return guidePlans(champion, mode).find(({ guide }) => guide.id === id);
+}
+
+export function describeStandardCuration(): Curation {
+  return { status: 'standard', itemIds: [], reason: 'The curation draw missed. This roll used the regular item pool.' };
 }
 
 export function describeCuration(champion: Champion, mode: Mode, plan: GuidePlan | undefined, equipment: readonly Item[]): Curation {

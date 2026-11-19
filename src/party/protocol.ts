@@ -1,6 +1,5 @@
 import { DATA_VERSION } from '../data'
-import { CURATION_VERSION } from '../data/curated'
-import { GENERATOR_VERSION, type ChallengeConfig, type Mode } from '../domain'
+import { CURATION_VERSION, GENERATOR_VERSION, type ChallengeConfig, type Mode } from '../domain'
 import { isChallengeInput } from '../domain/challenge'
 
 export const PARTY_VERSION = `2/${DATA_VERSION}/${GENERATOR_VERSION}/${CURATION_VERSION}`
