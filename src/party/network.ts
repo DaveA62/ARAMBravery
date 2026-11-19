@@ -17,7 +17,7 @@ import {
   type PartyMessage,
   type PartySnapshot,
 } from './protocol'
-import type { PartyLink, PartyLinkHandlers } from './transport'
+import { receivePartyMessage, sendPartyMessage, type PartyLink, type PartyLinkHandlers } from './transport'
 
 export type PartyStatus = 'idle' | 'connecting' | 'hosting' | 'joined' | 'reconnecting' | 'error' | 'disconnected'
 export type PartyState = {
@@ -108,15 +108,16 @@ function peerLink(connection: DataConnection): PartyLink {
     close() { connection.close() },
     subscribe(handlers: PartyLinkHandlers) {
       let subscribed = true
+      const receive = receivePartyMessage(handlers.message)
       connection.on('open', handlers.open)
-      connection.on('data', handlers.message)
+      connection.on('data', receive)
       connection.on('close', handlers.close)
       connection.on('error', handlers.error)
       if (connection.open) queueMicrotask(() => { if (subscribed) handlers.open() })
       return () => {
         subscribed = false
         connection.off('open', handlers.open)
-        connection.off('data', handlers.message)
+        connection.off('data', receive)
         connection.off('close', handlers.close)
         connection.off('error', handlers.error)
       }

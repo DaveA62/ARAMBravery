@@ -1,5 +1,5 @@
 import type { PartyMessage } from './protocol'
-import type { PartyLink } from './transport'
+import { receivePartyMessage, sendPartyMessage, type PartyLink } from './transport'
 
 type PartyHandlers = Parameters<PartyLink['subscribe']>[0]
 type DescriptionType = 'offer' | 'answer'
@@ -119,7 +119,7 @@ class NativePartyLink implements PartyLink {
   }
 
   send(message: PartyMessage) {
-    if (this.open) this.channel?.send(JSON.stringify(message))
+    if (this.open) sendPartyMessage(message, frame => this.channel?.send(JSON.stringify(frame)))
   }
 
   subscribe(handlers: PartyHandlers) {
@@ -188,10 +188,14 @@ class NativePartyLink implements PartyLink {
     if (typeof event.data !== 'string' || event.data.length > MAX_MESSAGE_LENGTH) return
     let message: unknown
     try { message = JSON.parse(event.data) } catch { return }
+    this.receive(message)
+  }
+
+  private readonly receive = receivePartyMessage(message => {
     // A LAN peer can greet us while the pasted answer is being handed to the lobby.
     if (!this.listeners.size && this.pending.length < 8) this.pending.push(message)
     for (const handlers of this.listeners) handlers.message(message)
-  }
+  })
 }
 
 export async function createManualOffer(options?: ManualOptions): Promise<ManualOffer> {
