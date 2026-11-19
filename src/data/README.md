@@ -1,12 +1,12 @@
 # ARAM: Mayhem data
 
-The app pins League patch **26.23**, Data Dragon **16.23.1**, and CommunityDragon **16.23**. It uses ranked-by-seed challenges for regular ARAM: Mayhem (`KIWI`, queue 2400). The alternative Classic-ish queue, Arena, and standard ARAM have separate rules.
+The app pins League patch **26.23**, Data Dragon **16.23.1**, and CommunityDragon **16.23**. It uses seeded challenges for regular ARAM: Mayhem (`KIWI`, queue 2400). The alternative Classic-ish queue, Arena, and standard ARAM have separate rules.
 
 | Dataset | Imported records | How records are selected |
 | --- | ---: | --- |
 | Champions | 173 | Queue 2400's `viableChampionRoster`, joined to Data Dragon's champion IDs. The game's unlocked champions, free rotation, and actual match offers further limit each account's choices. |
 | Shop items | 115 | The exact `KIWI` Map12 item lists joined to game item data, including purchasable Legendary items and complete shop boots. |
-| Starting spells | 8 | The intersection of Data Dragon and the game client's `KIWI` mode flags. Riot confirms Exhaust is disabled. |
+| Starting spells | 8 | Both Data Dragon and the game client's `KIWI` mode flags. Riot confirms Exhaust is disabled. |
 | Augment catalog | 241 | The `KIWI` client catalog joined to gameplay records by augment ID, with two explicitly disabled records excluded. Nine client-listed entries have disputed live availability and are marked in the app. |
 
 ## Shop rules
