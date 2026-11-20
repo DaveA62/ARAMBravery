@@ -4,11 +4,13 @@ import {
   CURATION_VERSION, LEGACY_CURATION_VERSION, curatedChampionPool, describeCuration, describeStandardCuration,
   findGuide, isCurationVersion, rollsForCuration, selectGuide, type Curation,
 } from './curation';
-import { canCombine, eligibleItems, generateItems, type Mode } from './itemLegality';
+import { canCombine, eligibleItems, generateItems, isBoot, type Mode } from './itemLegality';
 import { byId, pick, seededRandom, shuffled } from './random';
 import { generateSkills, type SkillStep } from './skills';
 
-export const GENERATOR_VERSION = '1';
+export const LEGACY_GENERATOR_VERSION = '1';
+export const GENERATOR_VERSION = '2';
+export type GeneratorVersion = typeof LEGACY_GENERATOR_VERSION | typeof GENERATOR_VERSION;
 const sortedChampions = [...champions].sort(byId);
 const sortedSpells = [...spells].sort(byId);
 
@@ -25,6 +27,7 @@ export interface ChallengeConfig {
   championId?: string;
   curated?: boolean;
   curationVersion?: string;
+  generatorVersion?: GeneratorVersion;
   rerolls: RerollAction[];
 }
 
@@ -60,8 +63,12 @@ function generateSpells(champion: Champion, random: () => number): Spell[] {
   return selection;
 }
 
-function challengeRandom(seed: string, scope: string): () => number {
-  return seededRandom(JSON.stringify([GENERATOR_VERSION, DATA_VERSION, seed, scope]));
+export function isGeneratorVersion(value: unknown): value is GeneratorVersion {
+  return value === LEGACY_GENERATOR_VERSION || value === GENERATOR_VERSION;
+}
+
+function challengeRandom(config: Pick<ChallengeConfig, 'seed' | 'generatorVersion'>, scope: string): () => number {
+  return seededRandom(JSON.stringify([config.generatorVersion ?? GENERATOR_VERSION, DATA_VERSION, config.seed, scope]));
 }
 
 function rerollCategory(action: RerollAction): RerollCategory {
@@ -81,6 +88,7 @@ export function isChallengeInput(value: unknown): value is ChallengeInput {
   if (!value || typeof value !== 'object' || !('seed' in value) || !('mode' in value)) return false;
   return typeof value.seed === 'string' && value.seed.trim().length > 0 &&
     (value.mode === 'little' || value.mode === 'straight') &&
+    (!('generatorVersion' in value) || value.generatorVersion === undefined || isGeneratorVersion(value.generatorVersion)) &&
     (!('curated' in value) || value.curated === undefined || typeof value.curated === 'boolean') &&
     (!('curationVersion' in value) || value.curationVersion === undefined ||
       ('curated' in value && value.curated === true && isCurationVersion(value.curationVersion))) &&
@@ -92,11 +100,16 @@ export function isChallengeInput(value: unknown): value is ChallengeInput {
 
 function rerollItem(
   champion: Champion, mode: Mode, current: readonly Item[], index: number,
-  random: () => number, guideItems: readonly string[] = [],
+  random: () => number,
+  { guideItems = [], avoidBoots, excludedItemIds }: {
+    guideItems?: readonly string[]; avoidBoots?: boolean; excludedItemIds?: ReadonlySet<string>;
+  } = {},
 ): Item[] {
   const occupied = current.filter((_, position) => position !== index);
-  const candidates = eligibleItems(champion, mode)
-    .filter((item) => item.id !== current[index].id && canCombine(item, occupied));
+  const legal = eligibleItems(champion, mode)
+    .filter((item) => item.id !== current[index].id && !excludedItemIds?.has(item.id) && canCombine(item, occupied));
+  const nonBoots = avoidBoots ? legal.filter((item) => !isBoot(item)) : [];
+  const candidates = nonBoots.length ? nonBoots : legal;
   const curated = candidates.filter((item) => guideItems.includes(item.id));
   const items = [...current];
   if (candidates.length) items[index] = pick(curated.length ? curated : candidates, random);
@@ -108,9 +121,11 @@ function rerollEquipment(
   action: RerollAction,
   count: number,
   loadoutRoll: number,
+  excludedItemIds?: ReadonlySet<string>,
 ): Equipment {
   const { champion, config } = challenge;
-  const random = challengeRandom(config.seed, `${rerollCategory(action)}:${count}`);
+  const ensureBoot = config.generatorVersion !== LEGACY_GENERATOR_VERSION;
+  const random = challengeRandom(config, `${rerollCategory(action)}:${count}`);
   const equipment: Equipment = {
     items: challenge.items, spells: challenge.spells,
     ...(challenge.curation ? { curation: challenge.curation } : {}),
@@ -119,11 +134,12 @@ function rerollEquipment(
   if (action.type === 'items') {
     const attempt = rollsForCuration(config.seed, config.curationVersion, loadoutRoll);
     const guide = attempt ? selectGuide(champion, config.mode, config.seed, count, challenge.curation?.guideId) : undefined;
-    let items = generateItems(champion, config.mode, random, guide?.guide.itemIds);
+    let items = generateItems(champion, config.mode, random, guide?.guide.itemIds, ensureBoot);
     if (guide && items.every(({ id }, index) => id === challenge.items[index].id)) {
       // A single matching source cannot provide a second full loadout. Adapt one
       // slot so the requested reroll still changes the result and its attribution.
-      const index = Math.floor(random() * items.length);
+      const replaceable = items.map((item, index) => ({ item, index })).filter(({ item }) => !ensureBoot || !isBoot(item));
+      const { index } = pick(replaceable, random);
       items = rerollItem(champion, config.mode, items, index, random);
     }
     if (!config.curated) return { ...equipment, items };
@@ -139,7 +155,11 @@ function rerollEquipment(
   if (action.type === 'item') {
     const followsGuide = challenge.curation?.status === 'applied' || config.curationVersion === LEGACY_CURATION_VERSION;
     const guide = followsGuide ? findGuide(champion, config.mode, challenge.curation?.guideId) : undefined;
-    const items = rerollItem(champion, config.mode, equipment.items, action.index, random, guide?.guide.itemIds);
+    const items = rerollItem(champion, config.mode, equipment.items, action.index, random, {
+      guideItems: guide?.guide.itemIds,
+      avoidBoots: ensureBoot && isBoot(equipment.items[action.index]),
+      excludedItemIds,
+    });
     if (!guide) return { ...equipment, items };
     return { ...equipment, items, curation: describeCuration(champion, config.mode, guide, items) };
   }
@@ -156,6 +176,7 @@ export function generateChallenge(input: ChallengeInput): Challenge {
   const config: ChallengeConfig = {
     seed: input.seed.trim(),
     mode: input.mode,
+    generatorVersion: input.generatorVersion ?? GENERATOR_VERSION,
     ...(input.championId ? { championId: input.championId } : {}),
     ...(input.curated ? { curated: true, curationVersion: input.curationVersion ?? CURATION_VERSION } : {}),
     rerolls: [...(input.rerolls ?? [])],
@@ -163,12 +184,12 @@ export function generateChallenge(input: ChallengeInput): Challenge {
   const attempt = rollsForCuration(config.seed, config.curationVersion, 0);
   const selectedChampion = sortedChampions.find(({ id }) => id === config.championId);
   const sourceRoster = attempt && !selectedChampion ? curatedChampionPool(sortedChampions, config.mode) : [];
-  const champion = selectedChampion ?? pick(sourceRoster.length ? sourceRoster : sortedChampions, challengeRandom(config.seed, 'champion'));
+  const champion = selectedChampion ?? pick(sourceRoster.length ? sourceRoster : sortedChampions, challengeRandom(config, 'champion'));
   const guide = attempt ? selectGuide(champion, config.mode, config.seed, 0) : undefined;
-  const items = generateItems(champion, config.mode, challengeRandom(config.seed, 'items:0'), guide?.guide.itemIds);
+  const items = generateItems(champion, config.mode, challengeRandom(config, 'items:0'), guide?.guide.itemIds, config.generatorVersion !== LEGACY_GENERATOR_VERSION);
   let equipment: Equipment = {
     items,
-    spells: generateSpells(champion, challengeRandom(config.seed, 'spells:0')),
+    spells: generateSpells(champion, challengeRandom(config, 'spells:0')),
     ...(config.curated ? { curation: attempt ? describeCuration(champion, config.mode, guide, items) : describeStandardCuration() } : {}),
   };
 
@@ -184,19 +205,19 @@ export function generateChallenge(input: ChallengeInput): Challenge {
     config,
     champion,
     ...equipment,
-    skills: generateSkills(champion.id, challengeRandom(config.seed, 'skills')),
-    augments: rankAugments(challengeRandom(config.seed, 'augments')),
+    skills: generateSkills(champion.id, challengeRandom(config, 'skills')),
+    augments: rankAugments(challengeRandom(config, 'augments')),
   };
 }
 
-export function rerollChallenge(challenge: Challenge, action: RerollAction): Challenge {
+export function rerollChallenge(challenge: Challenge, action: RerollAction, excludedItemIds?: ReadonlySet<string>): Challenge {
   if (!isRerollAction(action)) throw new Error('Invalid reroll action.');
   const category = rerollCategory(action);
   const count = challenge.config.rerolls.filter((entry) => rerollCategory(entry) === category).length + 1;
   const loadoutRoll = action.type === 'items' ? challenge.config.rerolls.filter((entry) => entry.type === 'items').length + 1 : 0;
   return {
     ...challenge,
-    ...rerollEquipment(challenge, action, count, loadoutRoll),
+    ...rerollEquipment(challenge, action, count, loadoutRoll, excludedItemIds),
     config: { ...challenge.config, rerolls: [...challenge.config.rerolls, action] },
   };
 }
@@ -217,6 +238,6 @@ export function challengeSummary(challenge: Challenge): string {
     `Purchase order: ${items.map(({ name }) => name).join(' → ')}`,
     `Summoner spells: ${spells.map(({ name }) => name).join(' + ')}`,
     `Skill order: ${skills.map(({ level, ability }) => `${level} ${ability ?? '–'}`).join(' · ')}`,
-    `Seed ${config.seed} · Data ${DATA_VERSION} · Generator ${GENERATOR_VERSION}`,
+    `Seed ${config.seed} · Data ${DATA_VERSION} · Generator ${config.generatorVersion ?? GENERATOR_VERSION}`,
   ].join('\n');
 }

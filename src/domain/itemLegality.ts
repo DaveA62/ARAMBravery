@@ -41,6 +41,10 @@ export function eligibleItems(champion: Champion, mode: Mode): Item[] {
   });
 }
 
+export function isBoot(item: Item): boolean {
+  return item.groups.includes('boots');
+}
+
 export function canCombine(candidate: Item, occupied: readonly Item[]): boolean {
   return occupied.every((item) => item.id !== candidate.id &&
     !item.groups.some((group) => candidate.groups.includes(group)));
@@ -57,12 +61,13 @@ export function validateItems(champion: Champion, selection: readonly Item[], mo
     canonicalItems.every((item, index) => canCombine(item, canonicalItems.slice(0, index)));
 }
 
-function findBuild(remaining: readonly Item[], chosen: readonly Item[], slots: number): Item[] | null {
-  if (chosen.length === slots) return [...chosen];
+function findBuild(remaining: readonly Item[], chosen: readonly Item[], slots: number, needsBoot = false): Item[] | null {
+  if (chosen.length === slots) return needsBoot ? null : [...chosen];
+  if (needsBoot && !remaining.some((item) => isBoot(item) && canCombine(item, chosen))) return null;
   for (let index = 0; index <= remaining.length - (slots - chosen.length); index += 1) {
     const candidate = remaining[index];
     if (!canCombine(candidate, chosen)) continue;
-    const result = findBuild(remaining.slice(index + 1), [...chosen, candidate], slots);
+    const result = findBuild(remaining.slice(index + 1), [...chosen, candidate], slots, needsBoot && !isBoot(candidate));
     if (result) return result;
   }
   return null;
@@ -81,10 +86,15 @@ export function compatibleGuideItems(champion: Champion, mode: Mode, guideItemId
   return [];
 }
 
-export function generateItems(champion: Champion, mode: Mode, random: () => number, guideItemIds?: readonly string[]): Item[] {
+export function generateItems(
+  champion: Champion, mode: Mode, random: () => number, guideItemIds?: readonly string[], ensureBoot = true,
+): Item[] {
   const pool = shuffled(eligibleItems(champion, mode), random);
   const preferred = guideItemIds?.length ? compatibleGuideItems(champion, mode, guideItemIds) : [];
-  const selection = findBuild(pool, preferred, ITEM_SLOT_COUNT) ?? findBuild(pool, [], ITEM_SLOT_COUNT);
+  const requireBoot = ensureBoot && pool.some(isBoot);
+  const needsBoot = requireBoot && !preferred.some(isBoot);
+  const prefix = needsBoot ? preferred.slice(0, ITEM_SLOT_COUNT - 1) : preferred;
+  const selection = findBuild(pool, prefix, ITEM_SLOT_COUNT, needsBoot) ?? findBuild(pool, [], ITEM_SLOT_COUNT, requireBoot);
   if (!selection) throw new Error(`The item pool cannot fill six legal slots for ${champion.name}.`);
   return selection;
 }

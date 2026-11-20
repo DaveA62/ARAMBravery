@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { generateChallenge, validateItems } from '../domain'
+import { isBoot } from '../domain/itemLegality'
 import { PartyAuthority } from './authority'
+import { resolvePartyBuild } from './build'
 import { COUNTDOWN, MAX_PLAYERS, RECONNECT_GRACE, ROLL_LOCK, parseHostMessage } from './protocol'
 
 function setup() {
@@ -281,4 +283,57 @@ it('passes the optional MOBAFire source rule through either party build mode', (
     expect(challenge.curation).toMatchObject({ status: 'applied', source: { name: 'MOBAFire' } })
     expect(parseHostMessage({ type: 'snapshot', now: 1, snapshot })).not.toBeNull()
   }
+})
+
+describe('Unique Mayhem', () => {
+  it('rolls five legal distinct inventories, keeps boots where legal, and preserves uniqueness through rerolls and vetoes', () => {
+    const { authority, host, guest, advance, options } = setup()
+    const otherIds = Array.from({ length: 4 }, (_, index) => guest('Player ' + (index + 2)).playerId)
+    const ids = [host, ...otherIds]
+    const rules = { mode: 'little', allowance: 2, curated: true, friendlyFire: true, uniqueMayhem: true } as const
+    expect(authority.dispatch(otherIds[0], { type: 'settings', rules })).toMatchObject({ ok: false })
+    expect(authority.dispatch(host, { type: 'settings', rules })).toMatchObject({ ok: true, changed: true })
+    const selections = ['Nautilus', 'Lux', 'Lux', 'Yuumi', 'Cassiopeia']
+    selections.forEach((championId, index) => {
+      authority.dispatch(ids[index], { type: 'champion', championId })
+      authority.dispatch(ids[index], { type: 'ready', ready: true })
+    })
+    expect(authority.dispatch(host, { type: 'roll' })).toMatchObject({ ok: true, changed: true })
+    const first = authority.snapshot()
+    const round = first.round!
+    const assertUnique = (snapshot: ReturnType<PartyAuthority['snapshot']>) => {
+      const builds = Object.values(snapshot.round!.builds).map(resolvePartyBuild)
+      const items = builds.flatMap(build => build.items.map(item => item.id))
+      expect(items).toHaveLength(30)
+      expect(new Set(items).size).toBe(items.length)
+      for (const build of builds) expect(validateItems(build.champion, build.items, build.config.mode)).toBe(true)
+      expect(parseHostMessage({ type: 'snapshot', now: 1, snapshot })).not.toBeNull()
+      return builds
+    }
+    const firstBuilds = assertUnique(first)
+    expect(firstBuilds.map(build => build.items.filter(isBoot).length)).toEqual([1, 1, 1, 1, 0])
+    const spoofed = structuredClone(first)
+    spoofed.round!.builds[otherIds[0]].itemIds![0] = round.builds[host].itemIds![0]
+    expect(parseHostMessage({ type: 'snapshot', now: 1, snapshot: spoofed })).toBeNull()
+
+    advance(COUNTDOWN + ROLL_LOCK)
+    const hostBootSlot = firstBuilds[0].items.findIndex(isBoot)
+    expect(authority.dispatch(host, { type: 'reroll', roundId: round.id, requestId: 'remove-boots', index: hostBootSlot }))
+      .toMatchObject({ ok: true, changed: true })
+    const afterReroll = assertUnique(authority.snapshot())
+    expect(afterReroll[0].items.some(isBoot)).toBe(false)
+    expect(afterReroll.slice(1)).toEqual(firstBuilds.slice(1))
+
+    const vetoSlot = afterReroll[1].items.findIndex(isBoot)
+    expect(authority.dispatch(host, { type: 'veto', roundId: round.id, requestId: 'unique-veto',
+      targetId: otherIds[0], index: vetoSlot, itemId: afterReroll[1].items[vetoSlot].id }))
+      .toMatchObject({ ok: true, changed: true })
+    const afterVeto = assertUnique(authority.snapshot())
+    expect(afterVeto[1].items.some(isBoot)).toBe(false)
+    expect(authority.snapshot().round!.builds[otherIds[0]]).toMatchObject({ used: 0, remaining: 2, lockedItemSlots: [vetoSlot] })
+    expect(afterVeto.slice(2)).toEqual(firstBuilds.slice(2))
+
+    const restored = PartyAuthority.resume(authority.checkpoint(), options)
+    expect(assertUnique(restored.snapshot())).toEqual(afterVeto)
+  })
 })

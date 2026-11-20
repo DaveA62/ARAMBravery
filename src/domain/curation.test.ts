@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { champions, items } from '../data';
 import { curatedGuides } from '../data/curated';
 import {
-  CURATION_VERSION, challengeFromUrl, challengeKey, challengeSummary, challengeUrl, generateChallenge,
+  CURATION_VERSION, LEGACY_GENERATOR_VERSION, challengeFromUrl, challengeKey, challengeSummary, challengeUrl, generateChallenge,
   loadLibrary, rememberChallenge, rerollChallenge, toggleFavorite, validateItems, type Mode,
 } from './index';
 import { LEGACY_CURATION_VERSION, curatedChampionPool } from './curation';
@@ -140,7 +140,7 @@ describe('optional MOBAFire curation', () => {
 
   it('replays published guaranteed-guide links and saved configs on their original behavior', () => {
     const config = { seed, mode: 'little', championId: 'Nautilus', curated: true, rerolls: [] } as const;
-    const legacy = generateChallenge({ ...config, curationVersion: LEGACY_CURATION_VERSION });
+    const legacy = generateChallenge({ ...config, generatorVersion: LEGACY_GENERATOR_VERSION, curationVersion: LEGACY_CURATION_VERSION });
     const publishedUrl = challengeUrl(legacy, base);
     expect(new URL(publishedUrl).searchParams.get('guides')).toBe('mobafire-26.23-1');
     expect(challengeFromUrl(publishedUrl)).toEqual(legacy);

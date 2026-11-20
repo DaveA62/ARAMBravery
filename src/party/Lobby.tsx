@@ -353,6 +353,15 @@ export function PartyLobby({ party, initialCode, play, onSolo }: Props) {
                           <small id="party-curated-note">Each full item roll has a 50% chance to try a MOBAFire guide. A miss uses the usual item pool.</small>
                         </span>
                       </label>
+                      <label className="rule-toggle">
+                        <input type="checkbox" aria-label="Unique Mayhem" aria-describedby="party-unique-mayhem-note"
+                          checked={Boolean(snapshot.rules.uniqueMayhem)} disabled={!isHost || !canEdit}
+                          onChange={event => updateRules({ uniqueMayhem: event.target.checked })} />
+                        <span>
+                          <strong>Unique Mayhem</strong>
+                          <small id="party-unique-mayhem-note">Each exact item can appear only once across the party. Applies to initial builds and all item rerolls.</small>
+                        </span>
+                      </label>
                       <label className="rule-toggle rule-toggle--friendly-fire">
                         <input type="checkbox" aria-label="Friendly Fire" aria-describedby="party-friendly-fire-note"
                           checked={Boolean(snapshot.rules.friendlyFire)} disabled={!isHost || !canEdit}

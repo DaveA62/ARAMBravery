@@ -3,9 +3,10 @@ import { motion } from 'motion/react'
 import { Crown, Eye, Gauge, LockKeyhole, RotateCw, Sparkles, Swords, Users, Zap } from 'lucide-react'
 import { Reel, type useArcade } from '../arcade'
 import { StageAtmosphere, StageProgress } from '../arcade/StageEffects'
-import { challengeKey, generateChallenge, type Challenge } from '../domain'
+import { challengeKey, type Challenge } from '../domain'
 import { championFace, championPool, championSplash, Loadout, preloadChallenge } from '../Loadout'
 import { Art, Modal } from '../ui'
+import { resolvePartyBuild } from './build'
 import type { PartyAction, PartyBuild, PartyRound, PartySnapshot } from './protocol'
 import './results.css'
 
@@ -41,7 +42,7 @@ export function PartyResults({ snapshot, round, playerId, connected, clockOffset
   const lastApplied = useRef('')
   const readyBuild = playerId ? round.builds[playerId] : undefined
   const config = readyBuild?.config
-  const generated = useMemo(() => config ? generateChallenge(config) : undefined, [config])
+  const generated = useMemo(() => readyBuild ? resolvePartyBuild(readyBuild) : undefined, [readyBuild])
   const buildKey = config ? challengeKey(config) : ''
   const { run, skip, busy } = arcade
   const untilStart = Math.max(0, round.startsAt - now)
@@ -145,7 +146,7 @@ export function PartyResults({ snapshot, round, playerId, connected, clockOffset
   const championRolling = championTrack?.phase === 'spinning'
   const showTeam = tab === 'team' && !busy
   const rosterBuilds = useMemo(() => Object.entries(round.builds).map(([id, build]) => ({
-    id, build, challenge: generateChallenge(build.config),
+    id, build, challenge: resolvePartyBuild(build),
   })), [round.builds])
   const inspectedBuild = rosterBuilds.find(entry => entry.id === inspected)
   const canInspect = !busy && (!locked || complete)
@@ -158,7 +159,9 @@ export function PartyResults({ snapshot, round, playerId, connected, clockOffset
         <StageAtmosphere phase={arcade.phase} championImpact={championTrack?.phase === 'landed' ? championTrack.id : undefined}
           reducedMotion={reducedMotion} />
         <div className="party-round-title" data-celebrate={celebrated || undefined}>
-          <p className="section-kicker"><Zap size={14} /> PARTY ROUND <span>{snapshot.code}</span></p>
+          <p className="section-kicker"><Zap size={14} /> PARTY ROUND <span>{snapshot.code}</span>
+            {snapshot.rules.uniqueMayhem && <span className="party-unique-flag">Unique Mayhem</span>}
+          </p>
           <h1>{!readyBuild ? 'Round in Progress' : !challenge ? 'Preparing Party Builds' : complete ? 'Party Builds Ready' : 'Rolling Party Builds'}</h1>
           <div className="party-round-readout" aria-live="polite">
             {!readyBuild ? 'You’re in the party. You’ll roll in the next round.'

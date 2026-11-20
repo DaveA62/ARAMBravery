@@ -1,9 +1,9 @@
 export {
   generateChallenge, rerollChallenge, eligibleSpells, validateSpells, challengeSummary, modeName,
-  GENERATOR_VERSION, type Challenge, type ChallengeConfig, type ChallengeInput, type RerollAction,
+  GENERATOR_VERSION, LEGACY_GENERATOR_VERSION, type GeneratorVersion, type Challenge, type ChallengeConfig, type ChallengeInput, type RerollAction,
 } from './challenge';
 export {
-  championCompatibility, eligibleItems, generateItems, validateItems, canCombine, ITEM_SLOT_COUNT, type Mode,
+  championCompatibility, eligibleItems, generateItems, validateItems, canCombine, isBoot, ITEM_SLOT_COUNT, type Mode,
 } from './itemLegality';
 export { generateSkills, validateSkills, type SkillStep } from './skills';
 export { recommendAugment, rankAugments, type AugmentDecision, type AugmentOfferCount } from './augmentDecisions';

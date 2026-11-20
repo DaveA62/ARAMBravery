@@ -1,14 +1,16 @@
-import { DATA_VERSION } from '../data'
+import { DATA_VERSION, items } from '../data'
 import { CURATION_VERSION, GENERATOR_VERSION, type ChallengeConfig, type Mode } from '../domain'
 import { isChallengeInput } from '../domain/challenge'
+import { ITEM_SLOT_COUNT } from '../domain/itemLegality'
 
-export const PARTY_VERSION = `2/${DATA_VERSION}/${GENERATOR_VERSION}/${CURATION_VERSION}`
+export const PARTY_VERSION = `3/${DATA_VERSION}/${GENERATOR_VERSION}/${CURATION_VERSION}`
 export const MAX_PLAYERS = 5
 export const RECONNECT_GRACE = 45_000
 export const COUNTDOWN = 1_100
 export const ROLL_LOCK = 5_200
 export const PAGES_URL = 'https://davea62.github.io/ARAMBravery/'
 const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+const itemIds = new Set(items.map(item => item.id))
 const codePattern = new RegExp(`^[${alphabet}]{6}$`)
 
 export const normalizeCode = (value: string) => value.trim().toUpperCase()
@@ -41,7 +43,7 @@ export function validNickname(value: string) {
 }
 
 export type Allowance = 0 | 1 | 2 | 3 | 5 | null
-export type PartyRules = { mode: Mode; allowance: Allowance; curated?: boolean; friendlyFire?: boolean }
+export type PartyRules = { mode: Mode; allowance: Allowance; curated?: boolean; friendlyFire?: boolean; uniqueMayhem?: boolean }
 export type PartyPlayer = {
   id: string
   nickname: string
@@ -54,6 +56,7 @@ export type PartyBuild = {
   config: ChallengeConfig
   remaining: number | null
   used: number
+  itemIds?: string[]
   lockedItemSlots?: number[]
   lastReroll?: { index: number; requestId: string; vetoBy?: string }
 }
@@ -126,11 +129,12 @@ function allowance(value: unknown): value is Allowance {
 export function isPartyRules(value: unknown): value is PartyRules {
   return object(value) && (value.mode === 'little' || value.mode === 'straight') && allowance(value.allowance) &&
     (value.curated === undefined || typeof value.curated === 'boolean') &&
-    (value.friendlyFire === undefined || typeof value.friendlyFire === 'boolean')
+    (value.friendlyFire === undefined || typeof value.friendlyFire === 'boolean') &&
+    (value.uniqueMayhem === undefined || typeof value.uniqueMayhem === 'boolean')
 }
 
 function slotIndex(value: unknown): value is number {
-  return integer(value) && value < 6
+  return integer(value) && value < ITEM_SLOT_COUNT
 }
 
 function action(value: unknown): value is PartyAction {
@@ -171,6 +175,8 @@ function player(value: unknown): value is PartyPlayer {
 function build(value: unknown): value is PartyBuild {
   return object(value) && text(value.nickname) && validNickname(value.nickname) && isChallengeInput(value.config) && Array.isArray(value.config.rerolls) &&
     (value.remaining === null || (integer(value.remaining) && value.remaining <= 5)) && integer(value.used) &&
+    (value.itemIds === undefined || (Array.isArray(value.itemIds) && value.itemIds.length === ITEM_SLOT_COUNT &&
+      value.itemIds.every(id => typeof id === 'string' && itemIds.has(id)) && new Set(value.itemIds).size === ITEM_SLOT_COUNT)) &&
     (value.lockedItemSlots === undefined || (Array.isArray(value.lockedItemSlots) && value.lockedItemSlots.length <= 6 &&
       value.lockedItemSlots.every(slotIndex) && new Set(value.lockedItemSlots).size === value.lockedItemSlots.length)) &&
     (value.lastReroll === undefined || (object(value.lastReroll) && slotIndex(value.lastReroll.index) &&
@@ -178,13 +184,21 @@ function build(value: unknown): value is PartyBuild {
         (text(value.lastReroll.vetoBy) && validNickname(value.lastReroll.vetoBy)))))
 }
 
-function round(value: unknown): value is PartyRound {
-  return object(value) && text(value.id) && timestamp(value.startsAt) && timestamp(value.unlockAt) &&
-    value.unlockAt >= value.startsAt && object(value.builds) &&
-    Object.keys(value.builds).length <= MAX_PLAYERS && Object.values(value.builds).every(build) &&
-    (value.vetoedBy === undefined || (Array.isArray(value.vetoedBy) && value.vetoedBy.length <= MAX_PLAYERS &&
-      value.vetoedBy.every(id => text(id) && Object.hasOwn(value.builds as object, id)) &&
-      new Set(value.vetoedBy).size === value.vetoedBy.length))
+function round(value: unknown, uniqueMayhem: boolean): value is PartyRound {
+  if (!object(value) || !text(value.id) || !timestamp(value.startsAt) || !timestamp(value.unlockAt) ||
+      value.unlockAt < value.startsAt || !object(value.builds)) return false
+
+  const builds = Object.values(value.builds)
+  if (builds.length > MAX_PLAYERS || !builds.every(build)) return false
+  if (uniqueMayhem) {
+    const assigned = builds.flatMap(({ itemIds }) => itemIds ?? [])
+    if (assigned.length !== builds.length * ITEM_SLOT_COUNT || new Set(assigned).size !== assigned.length) return false
+  } else if (builds.some(({ itemIds }) => itemIds !== undefined)) {
+    return false
+  }
+  return value.vetoedBy === undefined || (Array.isArray(value.vetoedBy) && value.vetoedBy.length <= MAX_PLAYERS &&
+    value.vetoedBy.every(id => text(id) && Object.hasOwn(value.builds as object, id)) &&
+    new Set(value.vetoedBy).size === value.vetoedBy.length)
 }
 
 function snapshot(value: unknown): value is PartySnapshot {
@@ -192,7 +206,7 @@ function snapshot(value: unknown): value is PartySnapshot {
     integer(value.revision) && text(value.hostId) && isPartyRules(value.rules) &&
     Array.isArray(value.players) && value.players.length <= MAX_PLAYERS &&
     value.players.every(player) && value.players.some(member => member.id === value.hostId) &&
-    (value.round === null || round(value.round)) &&
+    (value.round === null || round(value.round, Boolean(value.rules.uniqueMayhem))) &&
     Array.isArray(value.activity) && value.activity.length <= 100 &&
     value.activity.every(entry => object(entry) && integer(entry.id) && text(entry.text, 240))
 }

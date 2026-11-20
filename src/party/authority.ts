@@ -5,6 +5,8 @@ import {
   isPartyRules, normalizeCode, normalizeNickname, validCode, validNickname,
   type PartyAction, type PartyBuild, type PartyPlayer, type PartyRound, type PartySnapshot,
 } from './protocol'
+import { resolvePartyBuild, withPartyItems } from './build'
+import { allocateUniqueItems } from './uniqueItems'
 
 const MAX_HISTORY = 8
 const MAX_ACTIVITY = 12
@@ -129,7 +131,7 @@ export class PartyAuthority {
     authority.history.push(...history.slice(-MAX_HISTORY))
     for (const [playerId, ids] of rerollRequests) authority.rerollRequests.set(playerId, new Set(ids))
     for (const [playerId, build] of Object.entries(snapshot.round?.builds ?? {})) {
-      authority.challenges.set(playerId, generateChallenge(build.config))
+      authority.challenges.set(playerId, resolvePartyBuild(build))
     }
     authority.record(`${host.nickname} reconnected as host.`)
     return authority
@@ -232,16 +234,19 @@ export class PartyAuthority {
         if (!host) return reject('Only the host can change the rules.')
         if (round) return reject('Rules can change in the lobby between rounds.')
         if (!isPartyRules(action.rules)) return reject('Choose a supported chaos mode and item reroll allowance.')
-        const { mode, allowance, curated = false, friendlyFire = false } = action.rules
+        const { mode, allowance, curated = false, friendlyFire = false, uniqueMayhem = false } = action.rules
         const previous = this.state.rules
         const changes = [
           mode === previous.mode ? '' : mode === 'straight' ? 'Straight Bullshit' : 'A Little Bullshit',
           allowance === previous.allowance ? '' : allowance === null ? 'unlimited rerolls' : `${allowance} rerolls per player`,
           curated === Boolean(previous.curated) ? '' : `Curated Bullshit ${curated ? 'on' : 'off'}`,
           friendlyFire === Boolean(previous.friendlyFire) ? '' : `Friendly Fire ${friendlyFire ? 'on' : 'off'}`,
+          uniqueMayhem === Boolean(previous.uniqueMayhem) ? '' : `Unique Mayhem ${uniqueMayhem ? 'on' : 'off'}`,
         ].filter(Boolean)
         if (!changes.length) return unchanged
-        this.state.rules = { mode, allowance, ...(curated && { curated }), ...(friendlyFire && { friendlyFire }) }
+        this.state.rules = {
+          mode, allowance, ...(curated && { curated }), ...(friendlyFire && { friendlyFire }), ...(uniqueMayhem && { uniqueMayhem }),
+        }
         this.state.players = this.state.players.map(member => ({ ...member, ready: false }))
         this.record(player.nickname + ' set ' + changes.join(', ') + '.')
         return changed
@@ -277,7 +282,7 @@ export class PartyAuthority {
     if (this.state.round) return reject('Open the next lobby before rolling again.')
     const participants = this.state.players.filter((player) => player.connected)
     if (participants.some((player) => !player.ready)) return reject('Every connected player must be ready.')
-    const { mode, allowance, curated } = this.state.rules
+    const { mode, allowance, curated, uniqueMayhem } = this.state.rules
     try {
       const roundSeed = this.createSeed()
       const generated = participants.map((player, slot) => ({ player, challenge: generateChallenge({
@@ -286,11 +291,23 @@ export class PartyAuthority {
         curated,
         championId: player.championId,
       }) }))
-      const builds = Object.fromEntries(generated.map(({ player, challenge: { config } }) =>
-        [player.id, { nickname: player.nickname, config, remaining: allowance, used: 0 }]))
+      const assigned = uniqueMayhem ? allocateUniqueItems(generated.map(({ challenge }) => challenge)) : undefined
+      if (assigned === null) return reject('Unique Mayhem could not find six distinct legal items for everyone. Change a champion or lobby rule and try again.')
+
+      const match = generated.map(({ player, challenge }, index) => ({
+        player,
+        challenge: assigned ? withPartyItems(challenge, assigned[index]) : challenge,
+      }))
+      const builds = Object.fromEntries(match.map(({ player, challenge }) => [player.id, {
+        nickname: player.nickname,
+        config: challenge.config,
+        remaining: allowance,
+        used: 0,
+        ...(uniqueMayhem && { itemIds: challenge.items.map(item => item.id) }),
+      }]))
       const startsAt = this.now() + COUNTDOWN
       const round = { id: this.createId(), startsAt, unlockAt: startsAt + ROLL_LOCK, builds }
-      for (const { player, challenge } of generated) this.challenges.set(player.id, challenge)
+      for (const { player, challenge } of match) this.challenges.set(player.id, challenge)
       this.state.round = round
       this.record(`The host rolled for ${participants.length} connected ${participants.length === 1 ? 'player' : 'players'}.`)
       return changed
@@ -328,12 +345,17 @@ export class PartyAuthority {
     if (!veto && build.remaining === 0) return reject('You have no item rerolls left.')
 
     try {
-      const updated = rerollChallenge(challenge, { type: 'item', index: action.index })
+      const excluded = build.itemIds ? new Set(Object.entries(round.builds)
+        .flatMap(([playerId, entry]) => playerId !== targetId ? entry.itemIds ?? [] : [])) : undefined
+      const updated = rerollChallenge(challenge, { type: 'item', index: action.index }, excluded)
       const replacement = updated.items[action.index]
-      if (replacement.id === challenge.items[action.index].id) return reject('This slot has no legal replacement.')
+      if (replacement.id === challenge.items[action.index].id) {
+        return reject(excluded ? 'No unused party item fits that slot.' : 'This slot has no legal replacement.')
+      }
       const nextBuild: PartyBuild = {
         ...build,
         config: updated.config,
+        ...(build.itemIds && { itemIds: updated.items.map(item => item.id) }),
         lastReroll: { index: action.index, requestId: action.requestId, ...(veto && { vetoBy: actor.nickname }) },
       }
       if (veto) {

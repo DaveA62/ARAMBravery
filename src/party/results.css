@@ -13,6 +13,7 @@
 .party-round-title{position:relative;min-width:0;isolation:isolate}
 .party-round-title .section-kicker{color:#f0b9fa;letter-spacing:.16em}
 .party-round-title .section-kicker span{color:#ffd995;font-size:10px;background:#21152a;border:1px solid #5a415c;padding:3px 6px}
+.party-round-title .section-kicker .party-unique-flag{border-color:#528981;color:#b7fae8;background:#173330}
 .party-round-title h1{font:900 clamp(37px,6vw,76px)/.9 var(--display);color:#ffdf9f;max-width:16ch;margin:9px 0;text-shadow:0 2px 20px #15091e}
 .party-round-title[data-celebrate=true]{animation:party-impact .7s ease-out both}
 .party-round-readout{font-size:14px;color:#eee0f2;min-height:20px}
