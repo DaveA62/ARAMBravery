@@ -3,7 +3,7 @@ import { generateChallenge, validateItems } from '../domain'
 import { isBoot } from '../domain/itemLegality'
 import { PartyAuthority } from './authority'
 import { resolvePartyBuild } from './build'
-import { COUNTDOWN, MAX_PLAYERS, RECONNECT_GRACE, ROLL_LOCK, parseHostMessage } from './protocol'
+import { COUNTDOWN, MAX_PLAYERS, PARTY_DRAFT_DURATION, RECONNECT_GRACE, ROLL_LOCK, parseHostMessage } from './protocol'
 
 function setup() {
   let tick = 50_000
@@ -111,6 +111,7 @@ describe('authoritative rounds', () => {
     const late = guest('Late Arrival')
     expect(round.startsAt).toBe(options.now() + COUNTDOWN)
     expect(round.unlockAt).toBe(round.startsAt + ROLL_LOCK)
+    expect(round.draftEndsAt).toBe(round.unlockAt + PARTY_DRAFT_DURATION)
     expect(round.builds[host].config.seed).not.toBe(round.builds[joined.playerId].config.seed)
     expect(round.builds[joined.playerId]).toMatchObject({ config: { championId: 'Ezreal', mode: 'straight' }, remaining: 5, used: 0 })
     for (const { config } of Object.values(round.builds)) {
@@ -168,6 +169,44 @@ describe('authoritative rounds', () => {
     expect(authority.dispatch(host, { type: 'reroll', index: -1, roundId: id, requestId: 'invalid' })).toMatchObject({ ok: false })
     expect(authority.dispatch(host, { type: 'reroll', index: 0, roundId: 'stale', requestId: 'old' })).toMatchObject({ ok: false })
     expect(authority.snapshot().round!.builds[host].used).toBe(0)
+  })
+
+  it('ends personal rerolls on the exact host deadline and keeps completed requests idempotent', () => {
+    const { authority, host, advance, options } = setup()
+    authority.dispatch(host, { type: 'ready', ready: true })
+    authority.dispatch(host, { type: 'roll' })
+    const { id: roundId, draftEndsAt } = authority.snapshot().round!
+    const reroll = { type: 'reroll', index: 2, roundId, requestId: 'before-deadline' } as const
+    advance(draftEndsAt - options.now() - 1)
+    expect(authority.dispatch(host, reroll)).toEqual({ ok: true, changed: true })
+
+    const before = authority.checkpoint()
+    advance(1)
+    expect(options.now()).toBe(draftEndsAt)
+    expect(authority.dispatch(host, reroll)).toEqual({ ok: true, changed: false })
+    expect(authority.dispatch(host, { ...reroll, requestId: 'deadline' }))
+      .toEqual({ ok: false, error: 'The 60-second draft window has closed.' })
+    expect(authority.checkpoint()).toEqual(before)
+    expect(authority.dispatch(host, { type: 'next', roundId })).toEqual({ ok: true, changed: true })
+  })
+
+  it('keeps the original draft deadline when the host resumes and rejects incomplete saved deadlines', () => {
+    const { authority, host, advance, options } = setup()
+    authority.dispatch(host, { type: 'ready', ready: true })
+    authority.dispatch(host, { type: 'roll' })
+    const checkpoint = authority.checkpoint()
+    const { id: roundId, draftEndsAt } = checkpoint.snapshot.round!
+    const corrupted = structuredClone(checkpoint)
+    corrupted.snapshot.round!.draftEndsAt -= 1
+    expect(() => PartyAuthority.resume(corrupted, options)).toThrow('The saved party is incomplete.')
+
+    advance(draftEndsAt - options.now() + 20_000)
+    const resumed = PartyAuthority.resume(checkpoint, options)
+    expect(resumed.snapshot().round).toEqual(checkpoint.snapshot.round)
+    const before = resumed.checkpoint()
+    expect(resumed.dispatch(host, { type: 'reroll', index: 0, roundId, requestId: 'after-resume' }))
+      .toEqual({ ok: false, error: 'The 60-second draft window has closed.' })
+    expect(resumed.checkpoint()).toEqual(before)
   })
 
   it('resets the lobby without leaking private history and retains only eight previous rounds', () => {
@@ -251,6 +290,21 @@ describe('friendly fire', () => {
     expect(restored.snapshot().round?.vetoedBy).toBeUndefined()
     expect(restored.snapshot().round?.builds[host].lockedItemSlots).toBeUndefined()
     expect(restored.snapshot().rules.friendlyFire).toBe(true)
+  })
+
+  it('rejects fresh vetoes after the deadline without touching either build, the allowance or the activity', () => {
+    const { authority, host, observer, veto, advance, options, round } = hostileParty()
+    advance(round.draftEndsAt - options.now() - 1)
+    expect(authority.dispatch(host, veto)).toEqual({ ok: true, changed: true })
+    const before = authority.checkpoint()
+    const player = authority.snapshot().round!.builds[veto.targetId]
+    const alternate = generateChallenge(player.config).items[2]
+    const lateVeto = { ...veto, requestId: 'late-veto', index: 2, itemId: alternate.id }
+    advance(1)
+    expect(authority.dispatch(host, veto)).toEqual({ ok: true, changed: false })
+    expect(authority.dispatch(observer.playerId, lateVeto))
+      .toEqual({ ok: false, error: 'The 60-second draft window has closed.' })
+    expect(authority.checkpoint()).toEqual(before)
   })
 
   it('rejects invalid, stale, disabled, and self-targeted vetoes without using the allowance', () => {

@@ -3,11 +3,12 @@ import { CURATION_VERSION, GENERATOR_VERSION, type ChallengeConfig, type Mode } 
 import { isChallengeInput } from '../domain/challenge'
 import { ITEM_SLOT_COUNT } from '../domain/itemLegality'
 
-export const PARTY_VERSION = `3/${DATA_VERSION}/${GENERATOR_VERSION}/${CURATION_VERSION}`
+export const PARTY_VERSION = `4/${DATA_VERSION}/${GENERATOR_VERSION}/${CURATION_VERSION}`
 export const MAX_PLAYERS = 5
 export const RECONNECT_GRACE = 45_000
 export const COUNTDOWN = 1_100
 export const ROLL_LOCK = 5_200
+export const PARTY_DRAFT_DURATION = 60_000
 export const PAGES_URL = 'https://davea62.github.io/ARAMBravery/'
 const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
 const itemIds = new Set(items.map(item => item.id))
@@ -64,6 +65,7 @@ export type PartyRound = {
   id: string
   startsAt: number
   unlockAt: number
+  draftEndsAt: number
   builds: Record<string, PartyBuild>
   vetoedBy?: string[]
 }
@@ -186,7 +188,8 @@ function build(value: unknown): value is PartyBuild {
 
 function round(value: unknown, uniqueMayhem: boolean): value is PartyRound {
   if (!object(value) || !text(value.id) || !timestamp(value.startsAt) || !timestamp(value.unlockAt) ||
-      value.unlockAt < value.startsAt || !object(value.builds)) return false
+      value.unlockAt < value.startsAt || !timestamp(value.draftEndsAt) ||
+      value.draftEndsAt - value.unlockAt !== PARTY_DRAFT_DURATION || !object(value.builds)) return false
 
   const builds = Object.values(value.builds)
   if (builds.length > MAX_PLAYERS || !builds.every(build)) return false

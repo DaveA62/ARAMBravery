@@ -1,8 +1,8 @@
 import { champions } from '../data'
 import { generateChallenge, newSeed, rerollChallenge, type Challenge } from '../domain'
 import {
-  COUNTDOWN, MAX_PLAYERS, PARTY_VERSION, RECONNECT_GRACE, ROLL_LOCK,
-  isPartyRules, normalizeCode, normalizeNickname, validCode, validNickname,
+  COUNTDOWN, MAX_PLAYERS, PARTY_DRAFT_DURATION, PARTY_VERSION, RECONNECT_GRACE, ROLL_LOCK,
+  isPartyRules, normalizeCode, normalizeNickname, parseHostMessage, validCode, validNickname,
   type PartyAction, type PartyBuild, type PartyPlayer, type PartyRound, type PartySnapshot,
 } from './protocol'
 import { resolvePartyBuild, withPartyItems } from './build'
@@ -101,12 +101,12 @@ export class PartyAuthority {
     if (checkpoint?.version !== PARTY_VERSION) throw new Error('The saved party uses an unsupported version.')
     const saved = structuredClone(checkpoint)
     const { snapshot, sessions, history, rerollRequests } = saved
-    const host = snapshot?.players?.find(({ id }) => id === snapshot.hostId)
-    if (!host || !isPartyRules(snapshot.rules) || !Array.isArray(sessions) ||
-        !Array.isArray(history) || !Array.isArray(rerollRequests) || snapshot.players.length > MAX_PLAYERS ||
+    if (!parseHostMessage({ type: 'snapshot', now: 0, snapshot }) || !Array.isArray(sessions) ||
+        !Array.isArray(history) || !Array.isArray(rerollRequests) ||
         !snapshot.players.every((player) => sessions.some((session) => session.playerId === player.id && validToken(session.token)))) {
       throw new Error('The saved party is incomplete.')
     }
+    const host = snapshot.players.find(({ id }) => id === snapshot.hostId)!
     const authority = new PartyAuthority(snapshot.code, host.nickname, options)
     const time = authority.now()
     const keep = sessions.filter((session) => session.playerId === host.id ||
@@ -306,7 +306,8 @@ export class PartyAuthority {
         ...(uniqueMayhem && { itemIds: challenge.items.map(item => item.id) }),
       }]))
       const startsAt = this.now() + COUNTDOWN
-      const round = { id: this.createId(), startsAt, unlockAt: startsAt + ROLL_LOCK, builds }
+      const unlockAt = startsAt + ROLL_LOCK
+      const round = { id: this.createId(), startsAt, unlockAt, draftEndsAt: unlockAt + PARTY_DRAFT_DURATION, builds }
       for (const { player, challenge } of match) this.challenges.set(player.id, challenge)
       this.state.round = round
       this.record(`The host rolled for ${participants.length} connected ${participants.length === 1 ? 'player' : 'players'}.`)
@@ -319,7 +320,8 @@ export class PartyAuthority {
   private rerollItem(actor: PartyPlayer, action: Extract<PartyAction, { type: 'reroll' | 'veto' }>): Outcome {
     const { round } = this.state
     if (!round || round.id !== action.roundId) return reject('That round has already ended.')
-    if (this.now() < round.unlockAt) return reject('Wait for the builds to lock in.')
+    const now = this.now()
+    if (now < round.unlockAt) return reject('Wait for the builds to lock in.')
     if (!Number.isInteger(action.index) || action.index < 0 || action.index > 5 ||
         typeof action.requestId !== 'string' || !action.requestId || action.requestId.length > 128) {
       return reject('Invalid item reroll request.')
@@ -328,6 +330,7 @@ export class PartyAuthority {
 
     const requests = this.rerollRequests.get(actor.id)
     if (requests?.has(action.requestId)) return unchanged
+    if (now >= round.draftEndsAt) return reject('The 60-second draft window has closed.')
 
     const veto = action.type === 'veto'
     const targetId = veto ? action.targetId : actor.id

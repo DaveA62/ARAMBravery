@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { PartyAuthority } from './authority'
-import { acceptSnapshot, generateCode, normalizeNickname, parseClientMessage, parseHostMessage, PARTY_VERSION, partyInvite, partyPeerId, validCode, validNickname } from './protocol'
+import {
+  acceptSnapshot, generateCode, normalizeNickname, parseClientMessage, parseHostMessage, PARTY_DRAFT_DURATION,
+  PARTY_VERSION, partyInvite, partyPeerId, validCode, validNickname,
+} from './protocol'
 
 describe('party wire protocol', () => {
   it('generates short, readable codes and deterministically maps the same code to the same peer', () => {
@@ -35,6 +38,23 @@ describe('party wire protocol', () => {
     expect(acceptSnapshot(snapshot, updated)).toBe(updated)
     expect(acceptSnapshot(updated, snapshot)).toBe(updated)
     expect(acceptSnapshot(updated, { ...updated, revision: 100, hostId: 'other' })).toBe(updated)
+  })
+
+  it('requires an exact one-minute draft deadline and still accepts completed round snapshots', () => {
+    const authority = new PartyAuthority('ABCD89', 'Host', { now: () => 50_000 })
+    const { playerId } = authority.hostIdentity
+    authority.dispatch(playerId, { type: 'ready', ready: true })
+    authority.dispatch(playerId, { type: 'roll' })
+    const snapshot = authority.snapshot()
+    const { draftEndsAt, ...withoutDeadline } = snapshot.round!
+    expect(draftEndsAt - withoutDeadline.unlockAt).toBe(PARTY_DRAFT_DURATION)
+    const wire = { type: 'snapshot', now: draftEndsAt + 1_000, snapshot }
+    expect(parseHostMessage(wire)).not.toBeNull()
+    expect(parseHostMessage({ ...wire, snapshot: { ...snapshot, round: withoutDeadline } })).toBeNull()
+    for (const invalid of [draftEndsAt - 1, draftEndsAt + 1, Infinity, NaN, '60000']) {
+      expect(parseHostMessage({ ...wire, snapshot: { ...snapshot, round: { ...withoutDeadline, draftEndsAt: invalid } } }))
+        .toBeNull()
+    }
   })
 })
 

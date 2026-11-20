@@ -13,7 +13,7 @@ import { ManualConnect } from './ManualConnect'
 import type { ManualRole } from './ManualConnect'
 import type { useParty } from './network'
 import {
-  MAX_PLAYERS, normalizeCode, normalizeNickname, partyInvite, validCode, validNickname,
+  MAX_PLAYERS, PARTY_DRAFT_DURATION, normalizeCode, normalizeNickname, partyInvite, validCode, validNickname,
 } from './protocol'
 import type { Allowance, PartyPlayer, PartyRules, PartySnapshot } from './protocol'
 import type { PartyLink } from './transport'
@@ -320,7 +320,7 @@ export function PartyLobby({ party, initialCode, play, onSolo }: Props) {
                     <div className="party-panel__heading">
                       <div>
                         <h2 id="party-settings-title"><Settings2 size={20} aria-hidden="true" /> Party Rules</h2>
-                        <p>{isHost ? 'Set the roll rules for every player.' : 'The host sets the roll rules.'}</p>
+                        <p>After the reveal, the party has {PARTY_DRAFT_DURATION / 1000} seconds for item rerolls and any enabled vetoes.</p>
                       </div>
                     </div>
                     <div className="party-settings__fields">

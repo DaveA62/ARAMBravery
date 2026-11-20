@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion } from 'motion/react'
-import { Crown, Eye, Gauge, LockKeyhole, RotateCw, Sparkles, Swords, Users, Zap } from 'lucide-react'
+import { Crown, Eye, Gauge, LockKeyhole, RotateCw, Sparkles, Swords, Timer, Users, Zap } from 'lucide-react'
 import { Reel, type useArcade } from '../arcade'
 import { StageAtmosphere, StageProgress } from '../arcade/StageEffects'
 import { challengeKey, type Challenge } from '../domain'
@@ -16,6 +16,39 @@ const stations = {
 }
 const allowanceLabel = (remaining: number | null) => remaining === null ? '∞' : String(remaining)
 const burst = Array.from({ length: 14 }, (_, index) => index * (360 / 14))
+
+type DraftPhase = 'preview' | 'open' | 'closed'
+
+function PartyDraft({ phase, seconds, duration, friendlyFire }: {
+  phase: DraftPhase
+  seconds: number
+  duration: number
+  friendlyFire: boolean
+}) {
+  const Icon = phase === 'closed' ? LockKeyhole : Timer
+  const status = phase === 'preview' ? 'Draft opens after the roll' : phase === 'open' ? 'Draft open' : 'Builds locked'
+  const remaining = phase === 'preview' ? duration : seconds
+  const displayTime = `${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, '0')}`
+  return (
+    <section className="party-draft" aria-label="Party draft" data-draft-phase={phase}
+      data-urgent={phase === 'open' && seconds <= 10 || undefined}>
+      <Icon className="party-draft__icon" size={23} aria-hidden="true" />
+      <div className="party-draft__copy">
+        <p className="party-draft__status" role="status">{status}</p>
+        <p className="party-draft__detail">
+          {phase === 'preview' ? `The draft lasts ${duration} seconds once the builds settle.`
+            : phase === 'open' ? (friendlyFire ? 'Time to reroll items and use Friendly Fire.' : 'Time to reroll items.')
+            : (friendlyFire ? 'Item rerolls and Friendly Fire are closed.' : 'Item rerolls are closed.')}
+        </p>
+      </div>
+      <span className="party-draft__time" role="timer" aria-label={phase === 'preview' ? 'Draft duration' : 'Draft time remaining'}
+        aria-live="off">{displayTime}</span>
+      <div className="party-draft__meter" aria-hidden="true">
+        <span style={{ transform: `scaleX(${remaining / duration})` }} />
+      </div>
+    </section>
+  )
+}
 
 type Props = {
   snapshot: PartySnapshot
@@ -35,7 +68,7 @@ export function PartyResults({ snapshot, round, playerId, connected, clockOffset
   const [inspected, setInspected] = useState<string>()
   const [pending, setPending] = useState<string>()
   const [vetoPending, setVetoPending] = useState(false)
-  const [now, setNow] = useState(() => Date.now() + clockOffset)
+  const [localNow, setLocalNow] = useState(Date.now)
   const [animated, setAnimated] = useState(false)
   const [revealed, setRevealed] = useState(false)
   const began = useRef(false)
@@ -45,19 +78,34 @@ export function PartyResults({ snapshot, round, playerId, connected, clockOffset
   const generated = useMemo(() => readyBuild ? resolvePartyBuild(readyBuild) : undefined, [readyBuild])
   const buildKey = config ? challengeKey(config) : ''
   const { run, skip, busy } = arcade
-  const untilStart = Math.max(0, round.startsAt - now)
-  const locked = now < round.unlockAt
+  const hostNow = localNow + clockOffset
+  const untilStart = Math.max(0, round.startsAt - hostNow)
+  const locked = hostNow < round.unlockAt
+  const draftPhase: DraftPhase = locked ? 'preview' : hostNow < round.draftEndsAt ? 'open' : 'closed'
+  const draftSeconds = Math.max(0, Math.ceil((round.draftEndsAt - hostNow) / 1000))
+  const draftDuration = Math.ceil((round.draftEndsAt - round.unlockAt) / 1000)
   const host = snapshot.hostId === playerId
   const vetoUsed = Boolean(playerId && round.vetoedBy?.includes(playerId))
-  const canVeto = Boolean(snapshot.rules.friendlyFire && readyBuild && connected && !locked && !busy && !vetoUsed && !vetoPending)
+  const canVeto = Boolean(snapshot.rules.friendlyFire && readyBuild && connected && draftPhase === 'open' && !busy && !vetoUsed && !vetoPending)
 
   useEffect(() => {
-    if (!locked) return
-    const tick = () => setNow(Date.now() + clockOffset)
+    let timer: number | undefined
+    const tick = () => {
+      window.clearTimeout(timer)
+      const localTime = Date.now()
+      setLocalNow(localTime)
+      const time = localTime + clockOffset
+      const boundary = time < round.startsAt ? round.startsAt : time < round.unlockAt ? round.unlockAt : round.draftEndsAt
+      const remaining = boundary - time
+      if (remaining > 0) timer = window.setTimeout(tick, remaining % 1000 || 1000)
+    }
     tick()
-    const timer = window.setInterval(tick, 125)
-    return () => window.clearInterval(timer)
-  }, [locked, clockOffset])
+    document.addEventListener('visibilitychange', tick)
+    return () => {
+      window.clearTimeout(timer)
+      document.removeEventListener('visibilitychange', tick)
+    }
+  }, [round.startsAt, round.unlockAt, round.draftEndsAt, clockOffset])
 
   useEffect(() => {
     if (!generated || began.current) return
@@ -118,8 +166,13 @@ export function PartyResults({ snapshot, round, playerId, connected, clockOffset
     if (challenge && !busy) setRevealed(true)
   }, [challenge, busy])
 
+  const draftIsOpenNow = () => {
+    const time = Date.now() + clockOffset
+    return time >= round.unlockAt && time < round.draftEndsAt
+  }
+
   const rerollItem = (index: number) => {
-    if (!readyBuild || !challenge || !connected || locked || busy || pending || readyBuild.remaining === 0 ||
+    if (!readyBuild || !challenge || !connected || !draftIsOpenNow() || busy || pending || readyBuild.remaining === 0 ||
         readyBuild.lockedItemSlots?.includes(index)) return
     const requestId = crypto.randomUUID()
     setPending(requestId)
@@ -127,7 +180,7 @@ export function PartyResults({ snapshot, round, playerId, connected, clockOffset
   }
 
   const vetoItem = (targetId: string, index: number, itemId: string) => {
-    if (!canVeto || targetId === playerId) return
+    if (!canVeto || !draftIsOpenNow() || targetId === playerId) return
     setVetoPending(true)
     send({ type: 'veto', roundId: round.id, requestId: crypto.randomUUID(), targetId, index, itemId })
   }
@@ -187,21 +240,23 @@ export function PartyResults({ snapshot, round, playerId, connected, clockOffset
           onClick={() => { send({ type: 'next', roundId: round.id }); arcade.play('confirm') }}><RotateCw size={16} /> Return to Lobby</button>}
       </div>
 
+      <PartyDraft phase={draftPhase} seconds={draftSeconds} duration={draftDuration} friendlyFire={Boolean(snapshot.rules.friendlyFire)} />
+
       {!showTeam && readyBuild && <div className="party-allowance" aria-live="polite">
         <Gauge size={18} />
         <motion.strong key={String(readyBuild.remaining)} initial={reducedMotion ? false : { y: -8, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}>{allowanceLabel(readyBuild.remaining)}</motion.strong>
-        <span>{readyBuild.remaining === 0 ? 'No item rerolls left' : readyBuild.remaining === null ? 'Unlimited item rerolls' : 'Item rerolls remaining'}</span>
+        <span>{draftPhase === 'closed' ? 'Unused item rerolls' : readyBuild.remaining === 0 ? 'No item rerolls left' : readyBuild.remaining === null ? 'Unlimited item rerolls' : 'Item rerolls remaining'}</span>
         {pending && <small>Requesting reroll…</small>}
         {readyBuild.lastReroll?.vetoBy && <small><LockKeyhole size={13} aria-hidden="true" /> {readyBuild.lastReroll.vetoBy} vetoed slot {readyBuild.lastReroll.index + 1}</small>}
       </div>}
 
       {!showTeam && challenge && <Loadout challenge={challenge} arcade={arcade} showHeading={false} compact={compact}
-        onItemReroll={rerollItem} itemLocked={locked || !connected || Boolean(pending) || readyBuild?.remaining === 0}
+        onItemReroll={rerollItem} itemLocked={draftPhase !== 'open' || !connected || Boolean(pending) || readyBuild?.remaining === 0}
         lockedItemSlots={readyBuild?.lockedItemSlots} />}
       {!showTeam && !readyBuild && <p className="party-results-note">Your build will appear when the host rolls the next round.</p>}
 
-      {showTeam && canInspect && snapshot.rules.friendlyFire && readyBuild && (
+      {showTeam && canInspect && draftPhase === 'open' && snapshot.rules.friendlyFire && readyBuild && (
         <div className="party-friendly-fire" aria-live="polite">
           <Swords size={18} aria-hidden="true" />
           <strong>Friendly Fire</strong>
