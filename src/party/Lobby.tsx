@@ -345,15 +345,6 @@ export function PartyLobby({ party, initialCode, play, onSolo }: Props) {
                     </div>
                     <div className="party-settings__toggles">
                       <label className="rule-toggle">
-                        <input type="checkbox" aria-label="Curated Bullshit" aria-describedby="party-curated-note"
-                          checked={Boolean(snapshot.rules.curated)} disabled={!isHost || !canEdit}
-                          onChange={event => updateRules({ curated: event.target.checked }, 'mode')} />
-                        <span>
-                          <strong>Curated Bullshit</strong>
-                          <small id="party-curated-note">Each full item roll has a 50% chance to try a MOBAFire guide. A miss uses the usual item pool.</small>
-                        </span>
-                      </label>
-                      <label className="rule-toggle">
                         <input type="checkbox" aria-label="Unique Mayhem" aria-describedby="party-unique-mayhem-note"
                           checked={Boolean(snapshot.rules.uniqueMayhem)} disabled={!isHost || !canEdit}
                           onChange={event => updateRules({ uniqueMayhem: event.target.checked })} />

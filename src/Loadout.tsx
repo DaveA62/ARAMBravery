@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { BookOpen, Coins, Crosshair, ExternalLink, LockKeyhole, RotateCw, Zap } from 'lucide-react'
+import { Coins, Crosshair, LockKeyhole, RotateCw, Zap } from 'lucide-react'
 import { champions, items, spells, type Champion } from './data'
 import { modeName, type Challenge } from './domain'
 import { preloadArcade, Reel, type ReelFace, type useArcade } from './arcade'
@@ -84,7 +84,6 @@ type Props = {
 export function Loadout({ challenge, arcade, compact, showHeading = true, headingActions, onItemReroll, onSpellReroll, onRerollAll, itemLocked, lockedItemSlots }: Props) {
   const [skillLevel, setSkillLevel] = useState(0)
   useEffect(() => { setSkillLevel(0) }, [challenge.config.seed])
-  const curation = challenge.curation
   return (
     <>
       <section id="loadout" className="loadout" aria-labelledby={showHeading ? "loadout-title" : undefined} aria-label={showHeading ? undefined : "The Loadout"} data-item-controls={Boolean(onItemReroll)} data-spell-controls={Boolean(onSpellReroll)}>
@@ -106,10 +105,8 @@ export function Loadout({ challenge, arcade, compact, showHeading = true, headin
                 const track = arcade.tracks.items[i]
                 const hidden = track?.phase === 'queued' || track?.phase === 'spinning'
                 const slotLocked = Boolean(lockedItemSlots?.includes(i))
-                const guideItem = Boolean(curation?.status === 'applied' && curation.itemIds?.includes(item.id))
                 const itemLabel = [
                   item.name, `${item.price} gold`,
-                  guideItem && 'From a MOBAFire guide',
                   slotLocked && 'Locked by Friendly Fire',
                 ].filter(Boolean).join(', ')
                 return (
@@ -117,17 +114,15 @@ export function Loadout({ challenge, arcade, compact, showHeading = true, headin
                     <div className="item-window" tabIndex={hidden ? undefined : 0} aria-label={hidden ? 'Rolling item ' + (i + 1) : itemLabel}>
                       <Reel face={{ id: item.id, name: item.name, image: item.icon }} pool={itemPool} track={track} variant="item" vetoed={slotLocked} />
                       <span className="slot-number">{String(i + 1).padStart(2, '0')}</span>
-                      {!hidden && (guideItem || slotLocked) && (
+                      {!hidden && slotLocked && (
                         <div className="item-markers" aria-hidden="true">
-                          {guideItem && <span className="item-marker item-marker--guide"><BookOpen size={13} /></span>}
-                          {slotLocked && <span className="item-marker item-marker--lock"><LockKeyhole size={13} /></span>}
+                          <span className="item-marker item-marker--lock"><LockKeyhole size={13} /></span>
                         </div>
                       )}
                       {!hidden && (
                         <span className="item-tooltip" role="tooltip">
                           <strong>{item.name}</strong><span>{item.description}</span><small>{item.price.toLocaleString()} gold</small>
                           {item.upgradesTo && <small>Upgrades to {item.upgradesTo} when fully stacked.</small>}
-                          {guideItem && <small className="item-tooltip__guide">MOBAFire guide item</small>}
                           {slotLocked && <small className="item-tooltip__lock">Locked by Friendly Fire</small>}
                         </span>
                       )}
@@ -142,22 +137,6 @@ export function Loadout({ challenge, arcade, compact, showHeading = true, headin
                 )
               })}
             </div>
-            {arcade.showAugments && curation && (
-              <div className="item-provenance" data-status={curation.status}>
-                <BookOpen size={17} aria-hidden="true" />
-                <div>
-                  <strong>{curation.status === 'applied' ? 'Curated Bullshit' : 'Standard Build'}</strong>
-                  {curation.status === 'applied' && curation.source ? (
-                    <p>
-                      <a href={curation.source.url} target="_blank" rel="noopener noreferrer">
-                        {curation.source.title} <ExternalLink size={12} aria-hidden="true" />
-                      </a> · {curation.source.name} {curation.source.mode === 'aram' ? 'ARAM' : 'Summoner’s Rift'} guide by {curation.source.author}.
-                      {curation.adapted && ` ${curation.itemIds?.length ?? 0} of ${challenge.items.length} items from the guide.`}
-                    </p>
-                  ) : <p>{curation.reason ?? 'A verified guide was unavailable. This roll used the standard item pool.'}</p>}
-                </div>
-              </div>
-            )}
           </section>
 
           <section className="board-panel spells-panel" aria-labelledby="spell-title">

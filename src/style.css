@@ -414,7 +414,6 @@ svg{flex-shrink:0}
   background: color-mix(in srgb, var(--rule-accent) 20%, #211a31);
 }
 .rule-toggle input[type=checkbox]:checked::after { transform: translateX(12px); }
-.machine-curated { width: min(100%, 330px); margin-top: 1px; }
 
 .item-markers {
   position: absolute;
@@ -435,38 +434,10 @@ svg{flex-shrink:0}
   border-radius: 3px;
   background: #161425ed;
 }
-.item-marker--guide { color: #a2edeb; border-color: #648e88; }
 .item-marker--lock { color: #ffc0d4; border-color: #b26783; }
-.item-tooltip .item-tooltip__guide { color: #a2edeb; }
 .item-tooltip .item-tooltip__lock { color: #ffc0d4; }
 .item-cell[data-slot-locked] .item-window { border-color: #b57584; }
 .item-cell[data-slot-locked] .reel-reroll { color: #ffc0d4; opacity: .86; }
-.item-provenance {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 8px 10px;
-  margin-top: 10px;
-  border-left: 2px solid #77c8c5;
-  background: #17252d;
-  color: #bde9e7;
-  font-size: 12px;
-  line-height: 1.44;
-}
-.item-provenance > div { min-width: 0; overflow-wrap: anywhere; }
-.item-provenance > svg { margin-top: 1px; }
-.item-provenance p { margin: 2px 0 0; color: #d6d3e0; }
-.item-provenance a {
-  color: #b5eeee;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-.item-provenance a svg { display: inline; vertical-align: -2px; }
-.item-provenance[data-status=fallback] {
-  border-color: #bfa16b;
-  background: #292431;
-  color: #ecd1a1;
-}
 @media (forced-colors: active) {
   .rule-toggle input[type=checkbox] { appearance: auto; }
   .rule-toggle input[type=checkbox]::after { content: none; }

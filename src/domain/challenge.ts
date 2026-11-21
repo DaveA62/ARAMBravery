@@ -1,9 +1,5 @@
 import { champions, DATA_VERSION, spells, type Champion, type Item, type Spell } from '../data';
 import { rankAugments, type AugmentDecision } from './augmentDecisions';
-import {
-  CURATION_VERSION, LEGACY_CURATION_VERSION, curatedChampionPool, describeCuration, describeStandardCuration,
-  findGuide, isCurationVersion, rollsForCuration, selectGuide, type Curation,
-} from './curation';
 import { canCombine, eligibleItems, generateItems, isBoot, type Mode } from './itemLegality';
 import { byId, pick, seededRandom, shuffled } from './random';
 import { generateSkills, type SkillStep } from './skills';
@@ -25,8 +21,6 @@ export interface ChallengeConfig {
   mode: Mode;
   /** When omitted, the seed chooses from the eligible champion pool. */
   championId?: string;
-  curated?: boolean;
-  curationVersion?: string;
   generatorVersion?: GeneratorVersion;
   rerolls: RerollAction[];
 }
@@ -40,10 +34,9 @@ export interface Challenge {
   spells: Spell[];
   skills: SkillStep[];
   augments: AugmentDecision[];
-  curation?: Curation;
 }
 
-type Equipment = Pick<Challenge, 'items' | 'spells' | 'curation'>;
+type Equipment = Pick<Challenge, 'items' | 'spells'>;
 type RerollCategory = 'items' | 'spells';
 type RerollCounts = Record<RerollCategory, number>;
 
@@ -89,9 +82,9 @@ export function isChallengeInput(value: unknown): value is ChallengeInput {
   return typeof value.seed === 'string' && value.seed.trim().length > 0 &&
     (value.mode === 'little' || value.mode === 'straight') &&
     (!('generatorVersion' in value) || value.generatorVersion === undefined || isGeneratorVersion(value.generatorVersion)) &&
-    (!('curated' in value) || value.curated === undefined || typeof value.curated === 'boolean') &&
-    (!('curationVersion' in value) || value.curationVersion === undefined ||
-      ('curated' in value && value.curated === true && isCurationVersion(value.curationVersion))) &&
+    // Saved builds that relied on the retired guide pool cannot be reproduced.
+    (!('curated' in value) || value.curated !== true) &&
+    (!('curationVersion' in value) || value.curationVersion === undefined) &&
     (!('championId' in value) || value.championId === undefined ||
       sortedChampions.some(({ id }) => id === value.championId)) &&
     (!('rerolls' in value) || value.rerolls === undefined ||
@@ -101,8 +94,8 @@ export function isChallengeInput(value: unknown): value is ChallengeInput {
 function rerollItem(
   champion: Champion, mode: Mode, current: readonly Item[], index: number,
   random: () => number,
-  { guideItems = [], avoidBoots, excludedItemIds }: {
-    guideItems?: readonly string[]; avoidBoots?: boolean; excludedItemIds?: ReadonlySet<string>;
+  { avoidBoots, excludedItemIds }: {
+    avoidBoots?: boolean; excludedItemIds?: ReadonlySet<string>;
   } = {},
 ): Item[] {
   const occupied = current.filter((_, position) => position !== index);
@@ -110,9 +103,8 @@ function rerollItem(
     .filter((item) => item.id !== current[index].id && !excludedItemIds?.has(item.id) && canCombine(item, occupied));
   const nonBoots = avoidBoots ? legal.filter((item) => !isBoot(item)) : [];
   const candidates = nonBoots.length ? nonBoots : legal;
-  const curated = candidates.filter((item) => guideItems.includes(item.id));
   const items = [...current];
-  if (candidates.length) items[index] = pick(curated.length ? curated : candidates, random);
+  if (candidates.length) items[index] = pick(candidates, random);
   return items;
 }
 
@@ -120,7 +112,6 @@ function rerollEquipment(
   challenge: Pick<Challenge, 'champion' | 'config'> & Equipment,
   action: RerollAction,
   count: number,
-  loadoutRoll: number,
   excludedItemIds?: ReadonlySet<string>,
 ): Equipment {
   const { champion, config } = challenge;
@@ -128,23 +119,10 @@ function rerollEquipment(
   const random = challengeRandom(config, `${rerollCategory(action)}:${count}`);
   const equipment: Equipment = {
     items: challenge.items, spells: challenge.spells,
-    ...(challenge.curation ? { curation: challenge.curation } : {}),
   };
 
   if (action.type === 'items') {
-    const attempt = rollsForCuration(config.seed, config.curationVersion, loadoutRoll);
-    const guide = attempt ? selectGuide(champion, config.mode, config.seed, count, challenge.curation?.guideId) : undefined;
-    let items = generateItems(champion, config.mode, random, guide?.guide.itemIds, ensureBoot);
-    if (guide && items.every(({ id }, index) => id === challenge.items[index].id)) {
-      // A single matching source cannot provide a second full loadout. Adapt one
-      // slot so the requested reroll still changes the result and its attribution.
-      const replaceable = items.map((item, index) => ({ item, index })).filter(({ item }) => !ensureBoot || !isBoot(item));
-      const { index } = pick(replaceable, random);
-      items = rerollItem(champion, config.mode, items, index, random);
-    }
-    if (!config.curated) return { ...equipment, items };
-    const curation = attempt ? describeCuration(champion, config.mode, guide, items) : describeStandardCuration();
-    return { ...equipment, items, curation };
+    return { ...equipment, items: generateItems(champion, config.mode, random, ensureBoot) };
   }
   if (action.type === 'spells') {
     return { ...equipment, spells: generateSpells(champion, random) };
@@ -153,15 +131,11 @@ function rerollEquipment(
   // The current and occupied slots are excluded, so a reroll visibly changes
   // that slot whenever any alternative purchase or spell is legal.
   if (action.type === 'item') {
-    const followsGuide = challenge.curation?.status === 'applied' || config.curationVersion === LEGACY_CURATION_VERSION;
-    const guide = followsGuide ? findGuide(champion, config.mode, challenge.curation?.guideId) : undefined;
     const items = rerollItem(champion, config.mode, equipment.items, action.index, random, {
-      guideItems: guide?.guide.itemIds,
       avoidBoots: ensureBoot && isBoot(equipment.items[action.index]),
       excludedItemIds,
     });
-    if (!guide) return { ...equipment, items };
-    return { ...equipment, items, curation: describeCuration(champion, config.mode, guide, items) };
+    return { ...equipment, items };
   }
 
   const candidates = eligibleSpells(champion)
@@ -178,27 +152,22 @@ export function generateChallenge(input: ChallengeInput): Challenge {
     mode: input.mode,
     generatorVersion: input.generatorVersion ?? GENERATOR_VERSION,
     ...(input.championId ? { championId: input.championId } : {}),
-    ...(input.curated ? { curated: true, curationVersion: input.curationVersion ?? CURATION_VERSION } : {}),
     rerolls: [...(input.rerolls ?? [])],
   };
-  const attempt = rollsForCuration(config.seed, config.curationVersion, 0);
   const selectedChampion = sortedChampions.find(({ id }) => id === config.championId);
-  const sourceRoster = attempt && !selectedChampion ? curatedChampionPool(sortedChampions, config.mode) : [];
-  const champion = selectedChampion ?? pick(sourceRoster.length ? sourceRoster : sortedChampions, challengeRandom(config, 'champion'));
-  const guide = attempt ? selectGuide(champion, config.mode, config.seed, 0) : undefined;
-  const items = generateItems(champion, config.mode, challengeRandom(config, 'items:0'), guide?.guide.itemIds, config.generatorVersion !== LEGACY_GENERATOR_VERSION);
+  const champion = selectedChampion ?? pick(sortedChampions, challengeRandom(config, 'champion'));
+  const items = generateItems(
+    champion, config.mode, challengeRandom(config, 'items:0'), config.generatorVersion !== LEGACY_GENERATOR_VERSION,
+  );
   let equipment: Equipment = {
     items,
     spells: generateSpells(champion, challengeRandom(config, 'spells:0')),
-    ...(config.curated ? { curation: attempt ? describeCuration(champion, config.mode, guide, items) : describeStandardCuration() } : {}),
   };
 
   const counts: RerollCounts = { items: 0, spells: 0 };
-  let loadoutRoll = 0;
   for (const action of config.rerolls) {
     const category = rerollCategory(action);
-    if (action.type === 'items') loadoutRoll += 1;
-    equipment = rerollEquipment({ champion, config, ...equipment }, action, ++counts[category], loadoutRoll);
+    equipment = rerollEquipment({ champion, config, ...equipment }, action, ++counts[category]);
   }
 
   return {
@@ -214,10 +183,9 @@ export function rerollChallenge(challenge: Challenge, action: RerollAction, excl
   if (!isRerollAction(action)) throw new Error('Invalid reroll action.');
   const category = rerollCategory(action);
   const count = challenge.config.rerolls.filter((entry) => rerollCategory(entry) === category).length + 1;
-  const loadoutRoll = action.type === 'items' ? challenge.config.rerolls.filter((entry) => entry.type === 'items').length + 1 : 0;
   return {
     ...challenge,
-    ...rerollEquipment(challenge, action, count, loadoutRoll, excludedItemIds),
+    ...rerollEquipment(challenge, action, count, excludedItemIds),
     config: { ...challenge.config, rerolls: [...challenge.config.rerolls, action] },
   };
 }
@@ -227,14 +195,10 @@ export function modeName(mode: Mode): string {
 }
 
 export function challengeSummary(challenge: Challenge): string {
-  const { champion, config, curation, items, skills, spells } = challenge;
-  const guide = curation?.source;
+  const { champion, config, items, skills, spells } = challenge;
   return [
     `ARAM Mayhem — Ultimate Bravery · ${champion.name}`,
     modeName(config.mode),
-    ...(guide ? [
-      `${curation?.adapted ? 'Adapted from' : 'Build from'} ${guide.name} · ${guide.title} by ${guide.author} · ${guide.url}`,
-    ] : []),
     `Purchase order: ${items.map(({ name }) => name).join(' → ')}`,
     `Summoner spells: ${spells.map(({ name }) => name).join(' + ')}`,
     `Skill order: ${skills.map(({ level, ability }) => `${level} ${ability ?? '–'}`).join(' · ')}`,

@@ -18,7 +18,6 @@ The Vite preview command serves the production build with `npm run preview`. Git
 ## Play a challenge
 
 - Choose a random champion or select one from the mode's eligible roster. Pick **A Little Bullshit** to consider the champion’s meaningful scaling, or **Straight Bullshit** to roll from the full baseline shop.
-- Turn on **Curated Bullshit** alongside either build mode for a seeded 50% chance to try an off-meta MOBAFire guide on each full item roll, including **Reroll Items**. A miss uses the regular item pool for your selected mode. When a champion is picked at random on a miss, the full eligible roster is used. A hit without a compatible guide also produces a standard build. The loadout credits any guide used and marks its items.
 - Buy the items in the displayed order. Change any item or spell with its individual reroll. The other slots stay fixed. Tap a skill level to track it.
 - Builds include one pair of boots for champions who can buy them. Cassiopeia gets six other items. With **Unique Mayhem** enabled, a player can also receive six other items if the party cannot assign distinct legal boots to everyone.
 - The Augment Picker tells you which card to take at levels 3, 7, 11, and 15. Count the offered cards from left to right.
@@ -28,7 +27,7 @@ The Vite preview command serves the production build with `npm run preview`. Git
 
 ## Party Mayhem
 
-Open **Party Mayhem**, enter a nickname, and create a party. Share the six-character code or the invite link. Choose your champion and ready up. The host chooses the build mode, each player’s item reroll allowance, and whether Curated Bullshit is enabled. A party roll assigns a separate build to each player. **My Build** shows your results and rerolls. **Party Builds** shows everyone’s current builds. **Return to Lobby** keeps the party’s settings and champion selections for another round.
+Open **Party Mayhem**, enter a nickname, and create a party. Share the six-character code or the invite link. Choose your champion and ready up. The host chooses the build mode and each player’s item reroll allowance. A party roll assigns a separate build to each player. **My Build** shows your results and rerolls. **Party Builds** shows everyone’s current builds. **Return to Lobby** keeps the party’s settings and champion selections for another round.
 
 - After the reveal, the party has 60 seconds to reroll items and use Friendly Fire if enabled. The deadline follows the host’s clock across reconnects. You can still view and inspect builds after the draft locks.
 - Hosts can turn on **Unique Mayhem** to allow only one copy of each exact item across the party’s builds. The rule applies to initial rolls, personal item rerolls, and replacements from **Friendly Fire**.

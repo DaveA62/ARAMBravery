@@ -10,7 +10,6 @@ interface Participant {
   legal: Map<string, Item>
   boots: Item[]
   equipment: Item[]
-  guideIds: Set<string>
 }
 
 function assignBoots(participants: readonly Participant[]): Slots {
@@ -50,16 +49,13 @@ function assigned(slots: Slots): Item[] {
 
 function reserveOriginalItems(participants: readonly Participant[], slots: Slots[]) {
   const taken = new Set(slots.flatMap(assigned).map(({ id }) => id))
-  const claims = participants.flatMap(({ original, legal, guideIds }, player) =>
+  const claims = participants.flatMap(({ original, legal }, player) =>
     original.flatMap(({ id }, slot) => {
       const item = legal.get(id)
       return item && !isBoot(item) && !slots[player][slot]
-        ? [{ player, slot, item, curated: guideIds.has(id) }]
+        ? [{ player, slot, item }]
         : []
     }))
-  // When two participants rolled the same item, prefer preserving a guide's
-  // recommendation over preserving a randomly selected item.
-  claims.sort((left, right) => Number(right.curated) - Number(left.curated))
   for (const { player, slot, item } of claims) {
     if (taken.has(item.id) || !canCombine(item, assigned(slots[player]))) continue
     slots[player][slot] = item
@@ -109,7 +105,7 @@ function fillSlots(participants: readonly Participant[], slots: Slots[]): Item[]
 
 /** Allocate one copy of each item ID across the round, preserving input order. */
 export function allocateUniqueItems(builds: readonly Challenge[]): Item[][] | null {
-  const participants: Participant[] = builds.map(({ champion, config, items, curation }, player) => {
+  const participants: Participant[] = builds.map(({ champion, config, items }, player) => {
     const random = seededRandom(JSON.stringify(['unique-mayhem', config.seed, champion.id, player]))
     const options = shuffled(eligibleItems(champion, config.mode), random)
     const preferredBoot = items.find(isBoot)?.id
@@ -120,7 +116,6 @@ export function allocateUniqueItems(builds: readonly Challenge[]): Item[][] | nu
       legal: new Map(options.map(item => [item.id, item])),
       boots,
       equipment: options.filter(item => !isBoot(item)),
-      guideIds: new Set(curation?.status === 'applied' ? curation.itemIds : []),
     }
   })
 

@@ -43,17 +43,6 @@ describe('Unique Mayhem item allocation', () => {
     expect(new Set(allocated.flat().map(({ id }) => id)).size).toBe(30)
   })
 
-  it('keeps a guide-backed item when another participant rolled the same item', () => {
-    const standard = challenge('Jinx')
-    const shared = standard.items.find(item => !isBoot(item))!
-    const curated: Challenge = { ...standard, curation: { status: 'applied', itemIds: [shared.id] } }
-    const allocated = allocateUniqueItems([standard, curated])!
-    expect(allocated).not.toBeNull()
-    expect(allocated[0].some(item => item.id === shared.id)).toBe(false)
-    const slot = standard.items.indexOf(shared)
-    expect(allocated[1][slot].id).toBe(shared.id)
-  })
-
   it('maximizes boot coverage when legal boot choices overlap or a boot is scarce', () => {
     const builds = [challenge('Jinx', 'FIRST'), challenge('Garen', 'SECOND'), challenge('Vayne', 'THIRD')]
     const oneOption: Record<string, string[]> = {

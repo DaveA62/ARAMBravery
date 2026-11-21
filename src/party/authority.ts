@@ -5,7 +5,7 @@ import {
   isPartyRules, normalizeCode, normalizeNickname, parseHostMessage, validCode, validNickname,
   type PartyAction, type PartyBuild, type PartyPlayer, type PartyRound, type PartySnapshot,
 } from './protocol'
-import { resolvePartyBuild, withPartyItems } from './build'
+import { resolvePartyBuild } from './build'
 import { allocateUniqueItems } from './uniqueItems'
 
 const MAX_HISTORY = 8
@@ -234,18 +234,17 @@ export class PartyAuthority {
         if (!host) return reject('Only the host can change the rules.')
         if (round) return reject('Rules can change in the lobby between rounds.')
         if (!isPartyRules(action.rules)) return reject('Choose a supported chaos mode and item reroll allowance.')
-        const { mode, allowance, curated = false, friendlyFire = false, uniqueMayhem = false } = action.rules
+        const { mode, allowance, friendlyFire = false, uniqueMayhem = false } = action.rules
         const previous = this.state.rules
         const changes = [
           mode === previous.mode ? '' : mode === 'straight' ? 'Straight Bullshit' : 'A Little Bullshit',
           allowance === previous.allowance ? '' : allowance === null ? 'unlimited rerolls' : `${allowance} rerolls per player`,
-          curated === Boolean(previous.curated) ? '' : `Curated Bullshit ${curated ? 'on' : 'off'}`,
           friendlyFire === Boolean(previous.friendlyFire) ? '' : `Friendly Fire ${friendlyFire ? 'on' : 'off'}`,
           uniqueMayhem === Boolean(previous.uniqueMayhem) ? '' : `Unique Mayhem ${uniqueMayhem ? 'on' : 'off'}`,
         ].filter(Boolean)
         if (!changes.length) return unchanged
         this.state.rules = {
-          mode, allowance, ...(curated && { curated }), ...(friendlyFire && { friendlyFire }), ...(uniqueMayhem && { uniqueMayhem }),
+          mode, allowance, ...(friendlyFire && { friendlyFire }), ...(uniqueMayhem && { uniqueMayhem }),
         }
         this.state.players = this.state.players.map(member => ({ ...member, ready: false }))
         this.record(player.nickname + ' set ' + changes.join(', ') + '.')
@@ -282,13 +281,12 @@ export class PartyAuthority {
     if (this.state.round) return reject('Open the next lobby before rolling again.')
     const participants = this.state.players.filter((player) => player.connected)
     if (participants.some((player) => !player.ready)) return reject('Every connected player must be ready.')
-    const { mode, allowance, curated, uniqueMayhem } = this.state.rules
+    const { mode, allowance, uniqueMayhem } = this.state.rules
     try {
       const roundSeed = this.createSeed()
       const generated = participants.map((player, slot) => ({ player, challenge: generateChallenge({
         seed: `${roundSeed}-${slot + 1}`,
         mode,
-        curated,
         championId: player.championId,
       }) }))
       const assigned = uniqueMayhem ? allocateUniqueItems(generated.map(({ challenge }) => challenge)) : undefined
@@ -296,7 +294,7 @@ export class PartyAuthority {
 
       const match = generated.map(({ player, challenge }, index) => ({
         player,
-        challenge: assigned ? withPartyItems(challenge, assigned[index]) : challenge,
+        challenge: assigned ? { ...challenge, items: assigned[index] } : challenge,
       }))
       const builds = Object.fromEntries(match.map(({ player, challenge }) => [player.id, {
         nickname: player.nickname,

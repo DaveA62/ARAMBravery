@@ -228,6 +228,22 @@ describe('serialized and saved challenges', () => {
     expect(toggleFavorite(later).favorites).toEqual([]);
   });
 
+  it('rejects retired guide links and saved builds without substituting random results', () => {
+    const storage = stubStorage();
+    const standard = generateChallenge({ seed, mode: 'little' });
+    rememberChallenge(standard);
+    const [key] = storage.keys();
+    const retired = { ...standard.config, curated: true, curationVersion: 'mobafire-26.23-1' };
+    storage.set(key, JSON.stringify({ history: [retired, standard.config], favorites: [retired] }));
+    expect(loadLibrary()).toEqual({ history: [standard.config], favorites: [] });
+
+    const url = new URL(challengeUrl(standard, sharedBase));
+    url.searchParams.set('curated', '1');
+    url.searchParams.set('guides', retired.curationVersion);
+    expect(challengeFromUrl(url)).toBeNull();
+    expect(challengeFromUrl(challengeUrl(standard, url))).toEqual(standard);
+  });
+
   it('persists and restores local playback and compact settings', () => {
     const storage = stubStorage();
     expect(loadPreferences('short').motion).toBe('short');

@@ -75,12 +75,17 @@ export default function App() {
   })
   const [challenge, setChallenge] = useState(initial.challenge)
   const [mode, setMode] = useState<Mode>(initial.challenge.config.mode)
-  const [curated, setCurated] = useState(Boolean(initial.challenge.config.curated))
   const [selected, setSelected] = useState<string | undefined>(initial.fromLink?.config.championId)
   const [preferences, setPreferences] = useState(() => loadPreferences(window.matchMedia('(max-width: 640px)').matches ? 'short' : 'full'))
   const [library, setLibrary] = useState(loadLibrary)
   const [dialog, setDialog] = useState<'champions' | 'settings' | 'library' | 'share' | null>(null)
-  const [toast, setToast] = useState(() => !initial.fromLink && new URLSearchParams(location.search).has('seed') ? 'This challenge link uses an unsupported or invalid version.' : '')
+  const [toast, setToast] = useState(() => {
+    const query = new URLSearchParams(location.search)
+    if (initial.fromLink || !query.has('seed')) return ''
+    return query.has('curated') || query.has('guides')
+      ? 'This challenge link used Curated Bullshit, which has been removed.'
+      : 'This challenge link uses an unsupported or invalid version.'
+  })
   const [lastChampion, setLastChampion] = useState(challenge.champion)
   const [controlsOpen, setControlsOpen] = useState(!preferences.compact)
   const reduced = useReducedMotion()
@@ -126,7 +131,7 @@ export default function App() {
   const roll = () => {
     if (arcade.busy) return
     try {
-      const next = generateChallenge({ seed: newSeed(), mode, championId: selected, curated: curated || undefined })
+      const next = generateChallenge({ seed: newSeed(), mode, championId: selected })
       setLastChampion(displayedChampion)
       preloadChallenge(next)
       arcade.run('full', () => commit(next), {
@@ -153,7 +158,6 @@ export default function App() {
   const load = (next: Challenge) => {
     arcade.skip()
     setMode(next.config.mode)
-    setCurated(Boolean(next.config.curated))
     setSelected(next.config.championId)
     commit(next)
     setDialog(null)
@@ -259,17 +263,6 @@ export default function App() {
                       ))}
                     </div>
                   </div>
-                  <label className="rule-toggle machine-curated">
-                    <input type="checkbox" aria-label="Curated Bullshit" aria-describedby="solo-curated-note"
-                      checked={curated} disabled={arcade.busy} onChange={event => {
-                        setCurated(event.target.checked)
-                        arcade.play('mode', chaotic)
-                      }} />
-                    <span>
-                      <strong>Curated Bullshit</strong>
-                      <small id="solo-curated-note">Each full item roll has a 50% chance to try a MOBAFire guide. A miss uses the usual item pool.</small>
-                    </span>
-                  </label>
                 </div>
                 <div className="roll-zone">
                   <button type="button" className="roll-button" disabled={arcade.busy} onClick={roll}

@@ -9,7 +9,6 @@ import {
   type ChallengeConfig,
   type RerollAction,
 } from './challenge';
-import { CURATION_VERSION, LEGACY_CURATION_VERSION, isCurationVersion } from './curation';
 
 const LIBRARY_KEY = `aram-bravery.library.${DATA_VERSION}.${GENERATOR_VERSION}`;
 const LEGACY_LIBRARY_KEY = `aram-bravery.library.${DATA_VERSION}.${LEGACY_GENERATOR_VERSION}`;
@@ -43,7 +42,6 @@ export function challengeKey(value: ChallengeConfig | Challenge): string {
   return JSON.stringify([
     `${DATA_VERSION}.${config.generatorVersion ?? GENERATOR_VERSION}`, config.seed, config.mode,
     config.championId ?? null, config.rerolls.map(encodeReroll).join(''),
-    ...(config.curated ? [config.curationVersion ?? CURATION_VERSION] : []),
   ]);
 }
 
@@ -57,13 +55,8 @@ export function challengeUrl(value: ChallengeConfig | Challenge, base: string | 
   if (config.championId) url.searchParams.set('champion', config.championId);
   else url.searchParams.delete('champion');
 
-  if (config.curated) {
-    url.searchParams.set('curated', '1');
-    url.searchParams.set('guides', config.curationVersion ?? CURATION_VERSION);
-  } else {
-    url.searchParams.delete('curated');
-    url.searchParams.delete('guides');
-  }
+  url.searchParams.delete('curated');
+  url.searchParams.delete('guides');
 
   if (config.rerolls.length) url.searchParams.set('reels', config.rerolls.map(encodeReroll).join(''));
   else url.searchParams.delete('reels');
@@ -80,9 +73,7 @@ export function challengeFromUrl(source: string | URL | Location = globalThis.lo
     const generatorVersion = query.get('v');
     if (query.get('data') !== DATA_VERSION || !isGeneratorVersion(generatorVersion)) return null;
 
-    const curated = query.get('curated');
-    const curationVersion = curated === '1' ? query.get('guides') : undefined;
-    if (curated !== null && (curated !== '1' || !isCurationVersion(curationVersion))) return null;
+    if (query.has('curated') || query.has('guides')) return null;
 
     const rerolls: RerollAction[] = [];
     for (const token of query.get('reels') ?? '') {
@@ -96,7 +87,6 @@ export function challengeFromUrl(source: string | URL | Location = globalThis.lo
       mode: query.get('mode'),
       generatorVersion,
       championId: query.get('champion') ?? undefined,
-      ...(curated === '1' ? { curated: true, curationVersion } : {}),
       rerolls,
     };
     return isChallengeInput(input) ? generateChallenge(input) : null;
@@ -145,16 +135,13 @@ function writeLocal(key: string, value: unknown): void {
 
 function configs(value: unknown): ChallengeConfig[] {
   if (!Array.isArray(value)) return [];
-  return value.filter(isChallengeInput).flatMap((config) => {
-    const curationVersion = config.curated ? config.curationVersion ?? LEGACY_CURATION_VERSION : undefined;
-    if (curationVersion && !isCurationVersion(curationVersion)) return [];
-    return [{
-      ...config,
-      generatorVersion: config.generatorVersion ?? LEGACY_GENERATOR_VERSION,
-      ...(curationVersion ? { curationVersion } : {}),
-      rerolls: [...(config.rerolls ?? [])],
-    }];
-  });
+  return value.filter(isChallengeInput).map(({ seed, mode, championId, generatorVersion, rerolls }) => ({
+    seed,
+    mode,
+    ...(championId ? { championId } : {}),
+    generatorVersion: generatorVersion ?? LEGACY_GENERATOR_VERSION,
+    rerolls: [...(rerolls ?? [])],
+  }));
 }
 
 export function loadLibrary(): ChallengeLibrary {

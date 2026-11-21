@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { champions, DATA_VERSION } from '../data';
-import { curatedGuides } from '../data/curated';
 import {
   GENERATOR_VERSION, LEGACY_GENERATOR_VERSION, challengeFromUrl, challengeKey, challengeUrl, eligibleItems,
   generateChallenge, isBoot, loadLibrary, rememberChallenge, rerollChallenge, toggleFavorite, validateItems, type Mode,
@@ -25,19 +24,6 @@ describe('finished boots in new loadouts', () => {
         expect(validateItems(champion, next.items, mode)).toBe(true);
       }
     }
-  });
-
-  it('adds boots to a bootless curated guide and preserves boots on a same-guide full reroll', () => {
-    const guided = generateChallenge({ seed: 'PUBLISHED-MAYHEM-0', mode: 'straight', championId: 'Nunu', curated: true });
-    const source = curatedGuides.find(({ id }) => id === guided.curation?.guideId)!;
-    expect(guided.curation).toMatchObject({ status: 'applied', adapted: true });
-    expect(guided.items.slice(0, 5).map(({ id }) => id)).toEqual(source.itemIds.slice(0, 5));
-    expect(guided.items.filter(isBoot)).toHaveLength(1);
-
-    const next = rerollChallenge(guided, { type: 'items' });
-    expect(next.items).not.toEqual(guided.items);
-    expect(next.items.filter(isBoot)).toHaveLength(1);
-    expect(generateChallenge(next.config)).toEqual(next);
   });
 
   it('allows the individual boot reel to become a non-boot without touching any other slot', () => {

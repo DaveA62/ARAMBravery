@@ -324,27 +324,12 @@ describe('friendly fire', () => {
   })
 })
 
-it('passes the optional MOBAFire source rule through either party build mode', () => {
-  for (const mode of ['little', 'straight'] as const) {
-    const { authority, host } = setup()
-    expect(authority.dispatch(host, { type: 'settings', rules: { mode, allowance: 2, curated: true } }))
-      .toEqual({ ok: true, changed: true })
-    authority.dispatch(host, { type: 'ready', ready: true })
-    expect(authority.dispatch(host, { type: 'roll' })).toMatchObject({ ok: true })
-    const snapshot = authority.snapshot()
-    expect(snapshot.round!.builds[host].config).toMatchObject({ mode, curated: true })
-    const challenge = generateChallenge(snapshot.round!.builds[host].config)
-    expect(challenge.curation).toMatchObject({ status: 'applied', source: { name: 'MOBAFire' } })
-    expect(parseHostMessage({ type: 'snapshot', now: 1, snapshot })).not.toBeNull()
-  }
-})
-
 describe('Unique Mayhem', () => {
   it('rolls five legal distinct inventories, keeps boots where legal, and preserves uniqueness through rerolls and vetoes', () => {
     const { authority, host, guest, advance, options } = setup()
     const otherIds = Array.from({ length: 4 }, (_, index) => guest('Player ' + (index + 2)).playerId)
     const ids = [host, ...otherIds]
-    const rules = { mode: 'little', allowance: 2, curated: true, friendlyFire: true, uniqueMayhem: true } as const
+    const rules = { mode: 'little', allowance: 2, friendlyFire: true, uniqueMayhem: true } as const
     expect(authority.dispatch(otherIds[0], { type: 'settings', rules })).toMatchObject({ ok: false })
     expect(authority.dispatch(host, { type: 'settings', rules })).toMatchObject({ ok: true, changed: true })
     const selections = ['Nautilus', 'Lux', 'Lux', 'Yuumi', 'Cassiopeia']

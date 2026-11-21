@@ -1,9 +1,9 @@
 import { DATA_VERSION, items } from '../data'
-import { CURATION_VERSION, GENERATOR_VERSION, type ChallengeConfig, type Mode } from '../domain'
+import { GENERATOR_VERSION, type ChallengeConfig, type Mode } from '../domain'
 import { isChallengeInput } from '../domain/challenge'
 import { ITEM_SLOT_COUNT } from '../domain/itemLegality'
 
-export const PARTY_VERSION = `4/${DATA_VERSION}/${GENERATOR_VERSION}/${CURATION_VERSION}`
+export const PARTY_VERSION = `5/${DATA_VERSION}/${GENERATOR_VERSION}`
 export const MAX_PLAYERS = 5
 export const RECONNECT_GRACE = 45_000
 export const COUNTDOWN = 1_100
@@ -44,7 +44,7 @@ export function validNickname(value: string) {
 }
 
 export type Allowance = 0 | 1 | 2 | 3 | 5 | null
-export type PartyRules = { mode: Mode; allowance: Allowance; curated?: boolean; friendlyFire?: boolean; uniqueMayhem?: boolean }
+export type PartyRules = { mode: Mode; allowance: Allowance; friendlyFire?: boolean; uniqueMayhem?: boolean }
 export type PartyPlayer = {
   id: string
   nickname: string
@@ -130,7 +130,6 @@ function allowance(value: unknown): value is Allowance {
 
 export function isPartyRules(value: unknown): value is PartyRules {
   return object(value) && (value.mode === 'little' || value.mode === 'straight') && allowance(value.allowance) &&
-    (value.curated === undefined || typeof value.curated === 'boolean') &&
     (value.friendlyFire === undefined || typeof value.friendlyFire === 'boolean') &&
     (value.uniqueMayhem === undefined || typeof value.uniqueMayhem === 'boolean')
 }

@@ -73,28 +73,11 @@ function findBuild(remaining: readonly Item[], chosen: readonly Item[], slots: n
   return null;
 }
 
-export function compatibleGuideItems(champion: Champion, mode: Mode, guideItemIds: readonly string[]): Item[] {
-  const allowed = new Map(eligibleItems(champion, mode).map((item) => [item.id, item]));
-  const candidates = [...new Set(guideItemIds)].flatMap((id) => {
-    const item = allowed.get(id);
-    return item ? [item] : [];
-  });
-  for (let slots = Math.min(ITEM_SLOT_COUNT, candidates.length); slots > 0; slots -= 1) {
-    const subset = findBuild(candidates, [], slots);
-    if (subset) return subset;
-  }
-  return [];
-}
-
 export function generateItems(
-  champion: Champion, mode: Mode, random: () => number, guideItemIds?: readonly string[], ensureBoot = true,
+  champion: Champion, mode: Mode, random: () => number, ensureBoot = true,
 ): Item[] {
   const pool = shuffled(eligibleItems(champion, mode), random);
-  const preferred = guideItemIds?.length ? compatibleGuideItems(champion, mode, guideItemIds) : [];
-  const requireBoot = ensureBoot && pool.some(isBoot);
-  const needsBoot = requireBoot && !preferred.some(isBoot);
-  const prefix = needsBoot ? preferred.slice(0, ITEM_SLOT_COUNT - 1) : preferred;
-  const selection = findBuild(pool, prefix, ITEM_SLOT_COUNT, needsBoot) ?? findBuild(pool, [], ITEM_SLOT_COUNT, requireBoot);
+  const selection = findBuild(pool, [], ITEM_SLOT_COUNT, ensureBoot && pool.some(isBoot));
   if (!selection) throw new Error(`The item pool cannot fill six legal slots for ${champion.name}.`);
   return selection;
 }
